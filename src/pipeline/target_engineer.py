@@ -1,5 +1,17 @@
 """
 Target Engineering - Computes target variables (1-day forward returns).
+
+TIMING CONVENTION:
+------------------
+- returns[t] = (price[t] - price[t-1]) / price[t-1]
+  This is the return from close of day t-1 to close of day t.
+  
+- In backtesting, we use: portfolio_return[t] = weights[t-1] * returns[t]
+  This means: weights determined at close of day t-1 are held during day t,
+  and we realize the returns that occur from t-1 close to t close.
+  
+- Forward returns (targets): target[t] = return from t to t+forward_period
+  Used for training/evaluation, shifted so we're predicting future returns.
 """
 
 import pandas as pd
@@ -12,6 +24,15 @@ class TargetEngineer:
     Target engineer that computes target variables for the prediction task.
     
     Primary target: 1-day forward returns.
+    
+    Timing Convention:
+    ------------------
+    - compute_returns(): returns[t] = return from t-1 to t (standard pct_change)
+    - compute_targets(): target[t] = return from t to t+forward_period
+    
+    For backtesting with Backtester class:
+    - weights[t-1] * returns[t] = portfolio return at time t
+    - This matches the convention: trade at close t-1, realize return at close t
     """
     
     def __init__(self, forward_period: int = 1):
@@ -29,13 +50,17 @@ class TargetEngineer:
         """
         Compute forward returns as targets.
         
+        Timing:
+        - target[t] = return from t to t+forward_period
+        - Calculated as: returns.shift(-forward_period)
+        
         Args:
             price_matrix: DataFrame with dates as index, symbols as columns
             
         Returns:
             Forward returns DataFrame (shifted so target[t] = return from t to t+1)
         """
-        # Compute returns
+        # Compute returns: returns[t] = (price[t] - price[t-1]) / price[t-1]
         returns = price_matrix.pct_change()
         
         # Shift backwards to get forward returns
@@ -48,6 +73,15 @@ class TargetEngineer:
     def compute_returns(self, price_matrix: pd.DataFrame) -> pd.DataFrame:
         """
         Compute simple returns (not forward-looking).
+        
+        Timing:
+        - returns[t] = (price[t] - price[t-1]) / price[t-1]
+        - This is the return realized from close of t-1 to close of t
+        
+        For backtesting:
+        - portfolio_return[t] = weights[t-1] * returns[t]
+        - weights are determined at close of t-1
+        - returns[t] is realized during day t
         
         Args:
             price_matrix: DataFrame with dates as index, symbols as columns

@@ -1,130 +1,248 @@
 """
 Portfolio - Combines multiple predictors with configurable weights.
-1 portfolio = combine the 3 predictors.
+
+Workflow (correct implementation):
+1. Collect RAW signals from each predictor (before any processing)
+2. Combine: raw_combined = sum(allocation * raw_signal)
+3. Z-score the combined raw signal
+4. Filter by quantiles
+5. Re-zscore on active names
+6. weights = final signal (vol targeting optional, disabled by default)
 """
 
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 
 class Portfolio:
     """
-    Portfolio that combines multiple predictors with configurable weights.
+    Portfolio that combines multiple predictors (strategies).
     
     The portfolio:
-    1. Collects signals from multiple predictors
+    1. Collects RAW signals from each predictor
     2. Combines them using weighted average
-    3. Generates final portfolio weights
+    3. Z-scores the combined signal
+    4. Filters by quantiles
+    5. Re-z-scores on active names
+    6. Returns final weights (= final signal for now)
     """
     
-    def __init__(self, predictor_weights: Optional[Dict[str, float]] = None):
+    def __init__(self, 
+                 predictor_weights: Optional[Dict[str, float]] = None,
+                 top_q: float = 0.8,
+                 bottom_q: float = 0.2,
+                 long_short: bool = True,
+                 discrete: bool = False,
+                 enable_vol_target: bool = False,
+                 vol_target: float = 0.20):
         """
         Initialize the portfolio.
         
         Args:
-            predictor_weights: Dict mapping predictor names to weights.
+            predictor_weights: Dict mapping predictor names to allocation weights.
                               If None, equal weights are used.
+            top_q: Quantile for long positions (0.8 = top 20%)
+            bottom_q: Quantile for short positions (0.2 = bottom 20%)
+            long_short: Enable short positions
+            discrete: Use +1/0/-1 instead of continuous values
+            enable_vol_target: Enable volatility targeting (off by default)
+            vol_target: Target annualized volatility (20%)
         """
         self.predictor_weights = predictor_weights or {}
-        self._predictor_signals: Dict[str, pd.DataFrame] = {}
+        self.top_q = top_q
+        self.bottom_q = bottom_q
+        self.long_short = long_short
+        self.discrete = discrete
+        self.enable_vol_target = enable_vol_target
+        self.vol_target = vol_target
+        
+        self._raw_signals: Dict[str, pd.DataFrame] = {}
+        self._combined_raw: Optional[pd.DataFrame] = None
         self._combined_signal: Optional[pd.DataFrame] = None
-        self._portfolio_weights: Optional[pd.DataFrame] = None
+        self._weights: Optional[pd.DataFrame] = None
     
-    def add_predictor_signal(self, name: str, signals: pd.DataFrame):
+    def add_predictor_raw_signal(self, name: str, raw_signal: pd.DataFrame):
         """
-        Add signals from a predictor.
+        Add RAW signal from a predictor (before z-scoring/filtering).
         
         Args:
             name: Predictor name
-            signals: Signals DataFrame (output from Predictor.predict())
+            raw_signal: Raw signal DataFrame (from Predictor.compute_raw_signal())
         """
-        self._predictor_signals[name] = signals
+        self._raw_signals[name] = raw_signal
     
-    def combine_signals(self) -> pd.DataFrame:
+    def combine_and_process(self) -> pd.DataFrame:
         """
-        Combine signals from all predictors using weighted average.
+        Combine raw signals and process to final weights.
         
-        If predictor_weights is empty/None, equal weights are used.
+        Steps:
+        1. Weighted combination of raw signals
+        2. Z-score on full universe
+        3. Filter by quantiles
+        4. Re-zscore on active names
+        5. Apply volatility targeting (if enabled)
         
         Returns:
-            Combined signal DataFrame
+            Final weights DataFrame
         """
-        if not self._predictor_signals:
-            raise ValueError("No predictor signals added. Call add_predictor_signal first.")
+        if not self._raw_signals:
+            raise ValueError("No raw signals added. Call add_predictor_raw_signal first.")
+        
+        # Step 1: Combine raw signals with weights
+        self._combined_raw = self._combine_raw_signals()
+        
+        # Step 2: Z-score on full universe
+        zscored = self._zscore(self._combined_raw)
+        
+        # Step 3: Filter by quantiles
+        filtered = self._filter(zscored)
+        
+        # Step 4: Re-zscore on active names
+        self._combined_signal = self._rezscore_active(filtered)
+        
+        # Step 5: Apply volatility targeting (if enabled)
+        self._weights = self._apply_vol_target(self._combined_signal)
+        
+        return self._weights
+    
+    def _combine_raw_signals(self) -> pd.DataFrame:
+        """
+        Weighted combination of raw signals.
+        
+        Returns:
+            Combined raw signal DataFrame
+        """
+        names = list(self._raw_signals.keys())
         
         # Determine weights
-        names = list(self._predictor_signals.keys())
-        
         if not self.predictor_weights:
-            # Equal weights
             weights = {name: 1.0 / len(names) for name in names}
         else:
-            # Normalize provided weights
             total = sum(self.predictor_weights.get(name, 0) for name in names)
             if total == 0:
                 weights = {name: 1.0 / len(names) for name in names}
             else:
-                weights = {name: self.predictor_weights.get(name, 0) / total for name in names}
+                weights = {name: self.predictor_weights.get(name, 0) / total 
+                          for name in names}
         
-        # Combine signals
+        # Combine
         combined = None
-        for name, signals in self._predictor_signals.items():
-            weighted = signals * weights[name]
+        for name, raw_signal in self._raw_signals.items():
+            weighted = raw_signal * weights[name]
             if combined is None:
                 combined = weighted
             else:
                 combined = combined.add(weighted, fill_value=0)
         
-        # Apply cross-sectional z-score normalization
-        cs_mean = combined.mean(axis=1)
-        cs_std = combined.std(axis=1)
-        combined = combined.sub(cs_mean, axis=0).div(cs_std.replace(0, np.nan), axis=0).fillna(0)
-        
-        self._combined_signal = combined
         return combined
     
-    def generate_weights(self, long_short: bool = True) -> pd.DataFrame:
+    def _zscore(self, signals: pd.DataFrame) -> pd.DataFrame:
         """
-        Generate portfolio weights from combined signals.
-        
-        Weights are the cross-sectional z-scores directly.
+        Cross-sectional z-score.
         
         Args:
-            long_short: If True, include short positions (negative z-scores)
+            signals: Signal DataFrame
             
         Returns:
-            Portfolio weights DataFrame
+            Z-scored signals DataFrame
         """
-        if self._combined_signal is None:
-            raise ValueError("No combined signal. Call combine_signals first.")
+        cs_mean = signals.mean(axis=1, skipna=True)
+        cs_std = signals.std(axis=1, skipna=True)
+        cs_std = cs_std.replace(0, np.nan)
         
-        # Weights are the z-scores directly
-        weights = self._combined_signal.copy()
+        zscored = signals.sub(cs_mean, axis=0).div(cs_std, axis=0)
+        return zscored.fillna(0)
+    
+    def _filter(self, zscored: pd.DataFrame) -> pd.DataFrame:
+        """
+        Filter by top/bottom quantiles.
         
-        # If long only, zero out negative weights
-        if not long_short:
-            weights = weights.clip(lower=0)
+        Args:
+            zscored: Z-scored signals DataFrame
+            
+        Returns:
+            Filtered signals DataFrame
+        """
+        long_threshold = zscored.quantile(self.top_q, axis=1)
+        short_threshold = zscored.quantile(self.bottom_q, axis=1)
         
-        self._portfolio_weights = weights
-        return weights
+        filtered = pd.DataFrame(0.0, index=zscored.index, columns=zscored.columns)
+        
+        # Long positions
+        long_mask = zscored.ge(long_threshold, axis=0)
+        filtered = filtered.where(~long_mask, 1.0 if self.discrete else zscored)
+        
+        # Short positions
+        if self.long_short:
+            short_mask = zscored.le(short_threshold, axis=0)
+            filtered = filtered.where(~short_mask, -1.0 if self.discrete else zscored)
+        
+        return filtered
+    
+    def _rezscore_active(self, filtered: pd.DataFrame) -> pd.DataFrame:
+        """
+        Re-zscore on active (non-zero) names.
+        
+        Args:
+            filtered: Filtered signals DataFrame
+            
+        Returns:
+            Re-z-scored signals DataFrame
+        """
+        re_zscored = filtered.copy()
+        
+        for date in filtered.index:
+            row = filtered.loc[date]
+            active_mask = row != 0
+            
+            if active_mask.sum() > 1:
+                active_values = row[active_mask]
+                mean_active = active_values.mean()
+                std_active = active_values.std()
+                
+                if std_active > 0:
+                    re_zscored.loc[date, active_mask] = \
+                        (active_values - mean_active) / std_active
+        
+        return re_zscored
+    
+    def _apply_vol_target(self, signals: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply volatility targeting (turned off by default).
+        
+        When enabled:
+        - Compute realized portfolio volatility
+        - Scale weights to achieve target volatility
+        
+        Args:
+            signals: Signal DataFrame
+            
+        Returns:
+            Scaled weights DataFrame
+        """
+        if not self.enable_vol_target:
+            return signals  # weights = signals
+        
+        # TODO: Implement volatility targeting
+        # port_returns = (signals.shift(1) * returns).sum(axis=1)
+        # port_vol = port_returns.std() * np.sqrt(252)
+        # scale = self.vol_target / port_vol if port_vol > 0 else 1.0
+        # return signals * scale
+        
+        return signals
     
     def get_weights(self) -> Optional[pd.DataFrame]:
         """Return the most recent portfolio weights."""
-        return self._portfolio_weights
+        return self._weights
+    
+    def get_combined_raw(self) -> Optional[pd.DataFrame]:
+        """Return combined raw signal (before z-scoring)."""
+        return self._combined_raw
     
     def get_combined_signal(self) -> Optional[pd.DataFrame]:
-        """Return the most recent combined signal."""
+        """Return combined processed signal."""
         return self._combined_signal
-    
-    def set_weights(self, weights: Dict[str, float]):
-        """
-        Update predictor weights.
-        
-        Args:
-            weights: Dict mapping predictor names to weights
-        """
-        self.predictor_weights = weights
     
     def get_predictor_contribution(self) -> Dict[str, float]:
         """
@@ -133,7 +251,10 @@ class Portfolio:
         Returns:
             Dict mapping predictor names to their weight contribution
         """
-        names = list(self._predictor_signals.keys())
+        names = list(self._raw_signals.keys())
+        
+        if not names:
+            return {}
         
         if not self.predictor_weights:
             return {name: 1.0 / len(names) for name in names}

@@ -1,6 +1,6 @@
 """
 Streamlit application for cryptocurrency research platform with multi-strategy backtesting.
-Includes Momentum, Mean Reversion, and EWMA Crossover strategies.
+Uses the src.pipeline classes for signal construction and backtesting.
 """
 
 import sys
@@ -18,37 +18,17 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 
-# Import from existing modules
-from src.data_fetch import get_top_symbols, fetch_ohlcv_date_range
-from src.preprocessing import align_universe
-from src.factors import momentum, mean_reversion_zscore
-from src.backtest import backtest_signals
-from src.metrics import compute_metrics
-
-
-# ===== NEW EWMA CROSSOVER FACTOR =====
-def ewma_crossover(close: pd.Series, fast_window: int = 12, 
-                   slow_window: int = 26, std_window: int = 20) -> pd.Series:
-    """
-    EWMA Crossover Strategy
-
-    Signal = (fast_ewma - slow_ewma) / rolling_std
-
-    Args:
-        close: Series of closing prices
-        fast_window: Window for fast EWMA
-        slow_window: Window for slow EWMA
-        std_window: Window for rolling standard deviation
-
-    Returns:
-        Series of normalized signals
-    """
-    fast_ewma = close.ewm(span=fast_window).mean()
-    slow_ewma = close.ewm(span=slow_window).mean()
-    rolling_std = close.rolling(window=std_window).std().replace(0, np.nan)
-
-    signal = (fast_ewma - slow_ewma) / rolling_std
-    return signal.shift(1).fillna(0)
+# Import from pipeline module
+from src.pipeline import (
+    DataPipeline,
+    MomentumStrategy,
+    MeanReversionStrategy,
+    EWMACrossoverStrategy,
+    Predictor,
+    Portfolio,
+    Backtester,
+    MetricsCalculator
+)
 
 
 # ===== PAGE CONFIG =====
@@ -62,7 +42,7 @@ st.set_page_config(
 st.title("Cryptocurrency Research Platform - Multi-Strategy Backtester")
 
 # ===== SIDEBAR: GLOBAL CONTROLS =====
-st.sidebar.header("🔧 Global Configuration")
+st.sidebar.header("Global Configuration")
 
 universe_size = st.sidebar.selectbox(
     "Universe (top N symbols by volume)",
@@ -101,7 +81,7 @@ if start_date_ts >= end_date_ts:
 st.sidebar.markdown("---")
 
 # ===== MOMENTUM STRATEGY PARAMETERS =====
-st.sidebar.subheader("🔵 Momentum Strategy")
+st.sidebar.subheader("Momentum Strategy")
 momentum_lookback = st.sidebar.slider("Momentum Lookback", 5, 120, 21, key="mom_lookback")
 momentum_rebalance = st.sidebar.slider("Momentum Rebalance (days)", 1, 63, 21, key="mom_rebal")
 momentum_top_q_inv = st.sidebar.slider("Momentum Top quantile (long)", 0.10, 0.50, 0.20, key="mom_top")
@@ -111,7 +91,7 @@ momentum_bottom_q = st.sidebar.slider("Momentum Bottom quantile (short)", 0.10, 
 st.sidebar.markdown("---")
 
 # ===== MEAN REVERSION STRATEGY PARAMETERS =====
-st.sidebar.subheader("🟠 Mean Reversion Strategy")
+st.sidebar.subheader("Mean Reversion Strategy")
 mr_lookback = st.sidebar.slider("Mean Reversion Lookback", 5, 120, 14, key="mr_lookback")
 mr_rebalance = st.sidebar.slider("Mean Reversion Rebalance (days)", 1, 63, 7, key="mr_rebal")
 mr_top_q_inv = st.sidebar.slider("Mean Reversion Top quantile (long)", 0.10, 0.50, 0.30, key="mr_top")
@@ -121,7 +101,7 @@ mr_bottom_q = st.sidebar.slider("Mean Reversion Bottom quantile (short)", 0.10, 
 st.sidebar.markdown("---")
 
 # ===== EWMA CROSSOVER STRATEGY PARAMETERS =====
-st.sidebar.subheader("🟢 EWMA Crossover Strategy")
+st.sidebar.subheader("EWMA Crossover Strategy")
 ewma_fast_window = st.sidebar.slider("EWMA Fast Window", 5, 50, 12, key="ewma_fast")
 ewma_slow_window = st.sidebar.slider("EWMA Slow Window", 20, 200, 26, key="ewma_slow")
 ewma_std_window = st.sidebar.slider("EWMA Std Dev Window", 10, 100, 20, key="ewma_std")
@@ -133,7 +113,7 @@ ewma_bottom_q = st.sidebar.slider("EWMA Bottom quantile (short)", 0.10, 0.50, 0.
 st.sidebar.markdown("---")
 
 # ===== COMBINED PORTFOLIO WEIGHTS =====
-st.sidebar.subheader("🎯 Combined Portfolio Weights")
+st.sidebar.subheader("Combined Portfolio Weights")
 momentum_weight = st.sidebar.slider("Momentum Weight", 0.0, 1.0, 0.333, step=0.01, key="mom_wgt")
 mr_weight = st.sidebar.slider("Mean Reversion Weight", 0.0, 1.0, 0.333, step=0.01, key="mr_wgt")
 ewma_weight = st.sidebar.slider("EWMA Crossover Weight", 0.0, 1.0, 0.334, step=0.01, key="ewma_wgt")
@@ -145,74 +125,50 @@ if total_weight > 0:
     mr_weight /= total_weight
     ewma_weight /= total_weight
 
+# Combined portfolio quantile filtering
+st.sidebar.subheader("Combined Portfolio Filtering")
+combined_top_q_inv = st.sidebar.slider("Combined Top quantile (long)", 0.10, 0.50, 0.20, key="comb_top")
+combined_top_q = 1 - combined_top_q_inv
+combined_bottom_q = st.sidebar.slider("Combined Bottom quantile (short)", 0.10, 0.50, 0.20, key="comb_bot")
+
 st.sidebar.markdown("---")
 
 # ===== TRANSACTION COSTS =====
-st.sidebar.subheader("💰 Transaction Costs")
+st.sidebar.subheader("Transaction Costs")
 transaction_cost_bps = st.sidebar.number_input(
     "Transaction cost (bps)",
     min_value=0.0,
     value=10.0,
     key="trans_cost"
-) / 10000.0
+)
 
 # ===== RUN BACKTEST BUTTON =====
-run = st.sidebar.button("▶️ Run Backtest")
+run = st.sidebar.button("Run Backtest")
 
 
 # ===== DATA FETCHING =====
 @st.cache_data
 def get_data(universe_size: int, start_date: datetime, end_date: datetime):
-    """Fetch data for top symbols in date range."""
-    symbols = get_top_symbols(universe_size)
-    raw = {}
-
-    for sym in symbols:
-        try:
-            data = fetch_ohlcv_date_range(sym, start_date, end_date)
-            if not data.empty:
-                raw[sym] = data
-        except Exception as e:
-            st.warning(f"Failed to fetch {sym}: {str(e)}")
-            continue
-
-    if not raw:
-        return symbols, raw, pd.DataFrame()
-
-    closes = align_universe(raw)
-    return symbols, raw, closes
-
-
-# ===== SIGNAL COMPUTATION =====
-def compute_momentum_signals_df(closes: pd.DataFrame, lookback: int) -> pd.DataFrame:
-    """Compute momentum signals for all symbols."""
-    signals = pd.DataFrame(index=closes.index, columns=closes.columns)
-
-    for sym in closes.columns:
-        signals[sym] = momentum(closes[sym], lookback=lookback)
-
-    return signals.fillna(0)
-
-
-def compute_mean_reversion_signals_df(closes: pd.DataFrame, lookback: int) -> pd.DataFrame:
-    """Compute mean reversion signals for all symbols."""
-    signals = pd.DataFrame(index=closes.index, columns=closes.columns)
-
-    for sym in closes.columns:
-        signals[sym] = mean_reversion_zscore(closes[sym], lookback=lookback)
-
-    return signals.fillna(0)
-
-
-def compute_ewma_signals_df(closes: pd.DataFrame, fast_window: int, 
-                            slow_window: int, std_window: int) -> pd.DataFrame:
-    """Compute EWMA crossover signals for all symbols."""
-    signals = pd.DataFrame(index=closes.index, columns=closes.columns)
-
-    for sym in closes.columns:
-        signals[sym] = ewma_crossover(closes[sym], fast_window, slow_window, std_window)
-
-    return signals.fillna(0)
+    """Fetch data for top symbols in date range using DataPipeline."""
+    data_pipeline = DataPipeline()
+    
+    # Get top symbols
+    symbols = data_pipeline.get_top_symbols(universe_size)
+    
+    # Fetch data
+    raw_data = data_pipeline.fetch(
+        symbols=symbols,
+        start_date=start_date,
+        end_date=end_date
+    )
+    
+    # Preprocess
+    data_pipeline.preprocess()
+    
+    # Get price matrix
+    closes = data_pipeline.get_price_matrix()
+    
+    return symbols, raw_data, closes
 
 
 # ===== MAIN EXECUTION =====
@@ -225,88 +181,142 @@ if run:
         st.stop()
 
     # Display universe overview
-    st.subheader("📊 Universe Overview")
+    st.subheader("Universe Overview")
     
-    st.metric("Symbols Loaded", len(closes.columns))
-    st.metric("Data Range", f"{closes.index.min().date()} to {closes.index.max().date()}")
-    st.metric("Trading Days", len(closes))
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Symbols Loaded", len(closes.columns))
+    col2.metric("Data Range", f"{closes.index.min().date()} to {closes.index.max().date()}")
+    col3.metric("Trading Days", len(closes))
 
-    # Compute signals
+    # ===== COMPUTE SIGNALS USING PIPELINE =====
     with st.spinner("Computing signals..."):
-        momentum_signals = compute_momentum_signals_df(closes, momentum_lookback)
-        mr_signals = compute_mean_reversion_signals_df(closes, mr_lookback)
-        ewma_signals = compute_ewma_signals_df(closes, ewma_fast_window, ewma_slow_window, ewma_std_window)
+        # Create predictors for each strategy
+        momentum_predictor = Predictor(
+            strategy=MomentumStrategy(lookback=momentum_lookback),
+            top_q=momentum_top_q,
+            bottom_q=momentum_bottom_q,
+            long_short=True,
+            discrete=False
+        )
+        
+        mr_predictor = Predictor(
+            strategy=MeanReversionStrategy(lookback=mr_lookback),
+            top_q=mr_top_q,
+            bottom_q=mr_bottom_q,
+            long_short=True,
+            discrete=False
+        )
+        
+        ewma_predictor = Predictor(
+            strategy=EWMACrossoverStrategy(
+                fast_window=ewma_fast_window,
+                slow_window=ewma_slow_window,
+                std_window=ewma_std_window
+            ),
+            top_q=ewma_top_q,
+            bottom_q=ewma_bottom_q,
+            long_short=True,
+            discrete=False
+        )
+        
+        # Compute RAW signals
+        momentum_raw = momentum_predictor.compute_raw_signal(closes)
+        mr_raw = mr_predictor.compute_raw_signal(closes)
+        ewma_raw = ewma_predictor.compute_raw_signal(closes)
+        
+        # Process signals for individual strategy backtests
+        momentum_signals = momentum_predictor.process_signal()
+        mr_signals = mr_predictor.process_signal()
+        ewma_signals = ewma_predictor.process_signal()
 
-    # Run backtests
+    # ===== RUN BACKTESTS =====
     with st.spinner("Running backtests..."):
-        bt_momentum = backtest_signals(
-            momentum_signals, closes,
-            top_q=momentum_top_q, bottom_q=momentum_bottom_q,
-            rebalance_every=momentum_rebalance,
-            transaction_cost_bps=transaction_cost_bps
+        metrics_calc = MetricsCalculator()
+        
+        # Momentum backtest
+        bt_momentum = Backtester(
+            rebalance_frequency=momentum_rebalance,
+            transaction_cost_bps=transaction_cost_bps,
+            slippage_bps=5.0
         )
-
-        bt_mr = backtest_signals(
-            mr_signals, closes,
-            top_q=mr_top_q, bottom_q=mr_bottom_q,
-            rebalance_every=mr_rebalance,
-            transaction_cost_bps=transaction_cost_bps
+        result_momentum = bt_momentum.run(momentum_signals, closes)
+        
+        # Mean Reversion backtest
+        bt_mr = Backtester(
+            rebalance_frequency=mr_rebalance,
+            transaction_cost_bps=transaction_cost_bps,
+            slippage_bps=5.0
         )
-
-        bt_ewma = backtest_signals(
-            ewma_signals, closes,
-            top_q=ewma_top_q, bottom_q=ewma_bottom_q,
-            rebalance_every=ewma_rebalance,
-            transaction_cost_bps=transaction_cost_bps
+        result_mr = bt_mr.run(mr_signals, closes)
+        
+        # EWMA backtest
+        bt_ewma = Backtester(
+            rebalance_frequency=ewma_rebalance,
+            transaction_cost_bps=transaction_cost_bps,
+            slippage_bps=5.0
         )
-
-        # Combined portfolio
-        bt_combined = {
-            "weights": (
-                momentum_weight * bt_momentum["weights"] +
-                mr_weight * bt_mr["weights"] +
-                ewma_weight * bt_ewma["weights"]
-            ),
-            "daily_returns": (
-                momentum_weight * bt_momentum["daily_returns"] +
-                mr_weight * bt_mr["daily_returns"] +
-                ewma_weight * bt_ewma["daily_returns"]
-            ),
-        }
-        bt_combined["cumulative"] = (1 + bt_combined["daily_returns"]).cumprod()
+        result_ewma = bt_ewma.run(ewma_signals, closes)
+        
+        # Combined portfolio using raw signals
+        portfolio = Portfolio(
+            predictor_weights={
+                "momentum": momentum_weight,
+                "mean_reversion": mr_weight,
+                "ewma": ewma_weight
+            },
+            top_q=combined_top_q,
+            bottom_q=combined_bottom_q,
+            long_short=True,
+            discrete=False
+        )
+        
+        portfolio.add_predictor_raw_signal("momentum", momentum_raw)
+        portfolio.add_predictor_raw_signal("mean_reversion", mr_raw)
+        portfolio.add_predictor_raw_signal("ewma", ewma_raw)
+        
+        combined_weights = portfolio.combine_and_process()
+        
+        # Use average rebalance frequency for combined
+        avg_rebalance = int((momentum_rebalance + mr_rebalance + ewma_rebalance) / 3)
+        bt_combined = Backtester(
+            rebalance_frequency=avg_rebalance,
+            transaction_cost_bps=transaction_cost_bps,
+            slippage_bps=5.0
+        )
+        result_combined = bt_combined.run(combined_weights, closes)
 
     # ===== CUMULATIVE RETURNS CHART =====
-    st.subheader("📈 Cumulative Returns: All Strategies")
+    st.subheader("Cumulative Returns: All Strategies")
 
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
-        x=bt_momentum["cumulative"].index,
-        y=bt_momentum["cumulative"].values,
+        x=result_momentum.cumulative_returns.index,
+        y=result_momentum.cumulative_returns.values,
         mode='lines',
         name='Momentum',
         line=dict(width=2, color='#0066CC')
     ))
 
     fig.add_trace(go.Scatter(
-        x=bt_mr["cumulative"].index,
-        y=bt_mr["cumulative"].values,
+        x=result_mr.cumulative_returns.index,
+        y=result_mr.cumulative_returns.values,
         mode='lines',
         name='Mean Reversion',
         line=dict(width=2, color='#FF8C00')
     ))
 
     fig.add_trace(go.Scatter(
-        x=bt_ewma["cumulative"].index,
-        y=bt_ewma["cumulative"].values,
+        x=result_ewma.cumulative_returns.index,
+        y=result_ewma.cumulative_returns.values,
         mode='lines',
         name='EWMA Crossover',
         line=dict(width=2, color='#00AA00')
     ))
 
     fig.add_trace(go.Scatter(
-        x=bt_combined["cumulative"].index,
-        y=bt_combined["cumulative"].values,
+        x=result_combined.cumulative_returns.index,
+        y=result_combined.cumulative_returns.values,
         mode='lines',
         name='Combined Portfolio',
         line=dict(width=3, color='#DD0000', dash='dash')
@@ -320,86 +330,99 @@ if run:
         height=500
     )
 
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, use_container_width=True)
 
     # ===== PERFORMANCE METRICS =====
-    st.subheader("📊 Performance Metrics")
+    st.subheader("Performance Metrics")
 
-    metrics_momentum = compute_metrics(bt_momentum["daily_returns"])
-    metrics_mr = compute_metrics(bt_mr["daily_returns"])
-    metrics_ewma = compute_metrics(bt_ewma["daily_returns"])
-    metrics_combined = compute_metrics(bt_combined["daily_returns"])
+    metrics_momentum = result_momentum.metrics
+    metrics_mr = result_mr.metrics
+    metrics_ewma = result_ewma.metrics
+    metrics_combined = result_combined.metrics
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.markdown("#### 🔵 Momentum")
-        st.metric("Annual Return", f"{metrics_momentum['annual_return']:.2%}")
-        st.metric("Annual Vol", f"{metrics_momentum['annual_vol']:.2%}")
-        st.metric("Sharpe", f"{metrics_momentum['sharpe']:.2f}")
-        st.metric("Max DD", f"{metrics_momentum['max_drawdown']:.2%}")
+        st.markdown("#### Momentum")
+        st.metric("Annual Return", f"{metrics_momentum.annual_return:.2%}")
+        st.metric("Annual Vol", f"{metrics_momentum.annual_volatility:.2%}")
+        st.metric("Sharpe", f"{metrics_momentum.sharpe_ratio:.2f}")
+        st.metric("Max DD", f"{metrics_momentum.max_drawdown:.2%}")
 
     with col2:
-        st.markdown("#### 🟠 Mean Reversion")
-        st.metric("Annual Return", f"{metrics_mr['annual_return']:.2%}")
-        st.metric("Annual Vol", f"{metrics_mr['annual_vol']:.2%}")
-        st.metric("Sharpe", f"{metrics_mr['sharpe']:.2f}")
-        st.metric("Max DD", f"{metrics_mr['max_drawdown']:.2%}")
+        st.markdown("#### Mean Reversion")
+        st.metric("Annual Return", f"{metrics_mr.annual_return:.2%}")
+        st.metric("Annual Vol", f"{metrics_mr.annual_volatility:.2%}")
+        st.metric("Sharpe", f"{metrics_mr.sharpe_ratio:.2f}")
+        st.metric("Max DD", f"{metrics_mr.max_drawdown:.2%}")
 
     with col3:
-        st.markdown("#### 🟢 EWMA Crossover")
-        st.metric("Annual Return", f"{metrics_ewma['annual_return']:.2%}")
-        st.metric("Annual Vol", f"{metrics_ewma['annual_vol']:.2%}")
-        st.metric("Sharpe", f"{metrics_ewma['sharpe']:.2f}")
-        st.metric("Max DD", f"{metrics_ewma['max_drawdown']:.2%}")
+        st.markdown("#### EWMA Crossover")
+        st.metric("Annual Return", f"{metrics_ewma.annual_return:.2%}")
+        st.metric("Annual Vol", f"{metrics_ewma.annual_volatility:.2%}")
+        st.metric("Sharpe", f"{metrics_ewma.sharpe_ratio:.2f}")
+        st.metric("Max DD", f"{metrics_ewma.max_drawdown:.2%}")
 
     with col4:
-        st.markdown("#### 🎯 Combined")
-        st.metric("Annual Return", f"{metrics_combined['annual_return']:.2%}")
-        st.metric("Annual Vol", f"{metrics_combined['annual_vol']:.2%}")
-        st.metric("Sharpe", f"{metrics_combined['sharpe']:.2f}")
-        st.metric("Max DD", f"{metrics_combined['max_drawdown']:.2%}")
+        st.markdown("#### Combined")
+        st.metric("Annual Return", f"{metrics_combined.annual_return:.2%}")
+        st.metric("Annual Vol", f"{metrics_combined.annual_volatility:.2%}")
+        st.metric("Sharpe", f"{metrics_combined.sharpe_ratio:.2f}")
+        st.metric("Max DD", f"{metrics_combined.max_drawdown:.2%}")
 
     # ===== DETAILED METRICS TABLE =====
-    st.subheader("📋 Detailed Metrics Comparison")
+    st.subheader("Detailed Metrics Comparison")
 
     metrics_table = pd.DataFrame({
         'Momentum': [
-            f"{metrics_momentum['annual_return']:.2%}",
-            f"{metrics_momentum['annual_vol']:.2%}",
-            f"{metrics_momentum['sharpe']:.2f}",
-            f"{metrics_momentum['max_drawdown']:.2%}"
+            f"{metrics_momentum.annual_return:.2%}",
+            f"{metrics_momentum.annual_volatility:.2%}",
+            f"{metrics_momentum.sharpe_ratio:.2f}",
+            f"{metrics_momentum.max_drawdown:.2%}",
+            f"{metrics_momentum.calmar_ratio:.2f}",
+            f"{metrics_momentum.win_rate:.2%}",
+            f"{metrics_momentum.profit_factor:.2f}"
         ],
         'Mean Reversion': [
-            f"{metrics_mr['annual_return']:.2%}",
-            f"{metrics_mr['annual_vol']:.2%}",
-            f"{metrics_mr['sharpe']:.2f}",
-            f"{metrics_mr['max_drawdown']:.2%}"
+            f"{metrics_mr.annual_return:.2%}",
+            f"{metrics_mr.annual_volatility:.2%}",
+            f"{metrics_mr.sharpe_ratio:.2f}",
+            f"{metrics_mr.max_drawdown:.2%}",
+            f"{metrics_mr.calmar_ratio:.2f}",
+            f"{metrics_mr.win_rate:.2%}",
+            f"{metrics_mr.profit_factor:.2f}"
         ],
         'EWMA Crossover': [
-            f"{metrics_ewma['annual_return']:.2%}",
-            f"{metrics_ewma['annual_vol']:.2%}",
-            f"{metrics_ewma['sharpe']:.2f}",
-            f"{metrics_ewma['max_drawdown']:.2%}"
+            f"{metrics_ewma.annual_return:.2%}",
+            f"{metrics_ewma.annual_volatility:.2%}",
+            f"{metrics_ewma.sharpe_ratio:.2f}",
+            f"{metrics_ewma.max_drawdown:.2%}",
+            f"{metrics_ewma.calmar_ratio:.2f}",
+            f"{metrics_ewma.win_rate:.2%}",
+            f"{metrics_ewma.profit_factor:.2f}"
         ],
         'Combined': [
-            f"{metrics_combined['annual_return']:.2%}",
-            f"{metrics_combined['annual_vol']:.2%}",
-            f"{metrics_combined['sharpe']:.2f}",
-            f"{metrics_combined['max_drawdown']:.2%}"
+            f"{metrics_combined.annual_return:.2%}",
+            f"{metrics_combined.annual_volatility:.2%}",
+            f"{metrics_combined.sharpe_ratio:.2f}",
+            f"{metrics_combined.max_drawdown:.2%}",
+            f"{metrics_combined.calmar_ratio:.2f}",
+            f"{metrics_combined.win_rate:.2%}",
+            f"{metrics_combined.profit_factor:.2f}"
         ]
-    }, index=['Annual Return', 'Annual Vol', 'Sharpe', 'Max Drawdown'])
+    }, index=['Annual Return', 'Annual Vol', 'Sharpe', 'Max Drawdown', 
+              'Calmar Ratio', 'Win Rate', 'Profit Factor'])
 
-    st.dataframe(metrics_table, width='stretch')
+    st.dataframe(metrics_table, use_container_width=True)
 
     # ===== CORRELATION MATRIX =====
-    st.subheader("🔗 Strategy Correlation Matrix")
+    st.subheader("Strategy Correlation Matrix")
 
     returns_df = pd.DataFrame({
-        'Momentum': bt_momentum["daily_returns"],
-        'Mean Reversion': bt_mr["daily_returns"],
-        'EWMA Crossover': bt_ewma["daily_returns"],
-        'Combined': bt_combined["daily_returns"]
+        'Momentum': result_momentum.daily_returns,
+        'Mean Reversion': result_mr.daily_returns,
+        'EWMA Crossover': result_ewma.daily_returns,
+        'Combined': result_combined.daily_returns
     })
 
     corr_matrix = returns_df.corr()
@@ -418,10 +441,10 @@ if run:
         height=500
     )
 
-    st.plotly_chart(fig_corr, width='stretch')
+    st.plotly_chart(fig_corr, use_container_width=True)
 
     # ===== PORTFOLIO WEIGHTS =====
-    st.subheader("🎯 Combined Portfolio Composition")
+    st.subheader("Combined Portfolio Composition")
 
     weights_info = pd.DataFrame({
         'Strategy': ['Momentum', 'Mean Reversion', 'EWMA Crossover'],
@@ -432,27 +455,27 @@ if run:
         ]
     })
 
-    st.dataframe(weights_info, width='stretch')
+    st.dataframe(weights_info, use_container_width=True)
 
     st.info(
         f"""
         **Combined Portfolio:**
         - Allocation: {momentum_weight:.1%} Momentum + {mr_weight:.1%} Mean Reversion + {ewma_weight:.1%} EWMA
-        - Return: {metrics_combined['annual_return']:.2%} annually
-        - Volatility: {metrics_combined['annual_vol']:.2%} annually
-        - Sharpe: {metrics_combined['sharpe']:.2f}
-        - Max Drawdown: {metrics_combined['max_drawdown']:.2%}
+        - Return: {metrics_combined.annual_return:.2%} annually
+        - Volatility: {metrics_combined.annual_volatility:.2%} annually
+        - Sharpe: {metrics_combined.sharpe_ratio:.2f}
+        - Max Drawdown: {metrics_combined.max_drawdown:.2%}
         """
     )
 
     # ===== SIGNAL HEATMAPS =====
-    st.subheader("🔥 Strategy Signals (Latest 50 Bars)")
+    st.subheader("Strategy Signals (Latest 50 Bars)")
 
     # Calculate global min/max across all signals
     all_signals = pd.concat([
-        momentum_signals.iloc[-50:],
-        mr_signals.iloc[-50:],
-        ewma_signals.iloc[-50:]
+        momentum_raw.iloc[-50:],
+        mr_raw.iloc[-50:],
+        ewma_raw.iloc[-50:]
     ])
     vmin = all_signals.min().min()
     vmax = all_signals.max().max()
@@ -460,7 +483,7 @@ if run:
     tabs = st.tabs(["Momentum", "Mean Reversion", "EWMA Crossover"])
 
     with tabs[0]:
-        recent_momentum = momentum_signals.iloc[-50:].T
+        recent_momentum = momentum_raw.iloc[-50:].T
         fig_hm = px.imshow(
             recent_momentum,
             color_continuous_scale='RdBu_r',
@@ -470,10 +493,10 @@ if run:
             labels=dict(x="Date", y="Symbol", color="Signal")
         )
         fig_hm.update_layout(height=400)
-        st.plotly_chart(fig_hm, width='stretch')
+        st.plotly_chart(fig_hm, use_container_width=True)
 
     with tabs[1]:
-        recent_mr = mr_signals.iloc[-50:].T
+        recent_mr = mr_raw.iloc[-50:].T
         fig_hm = px.imshow(
             recent_mr,
             color_continuous_scale='RdBu_r',
@@ -483,10 +506,10 @@ if run:
             labels=dict(x="Date", y="Symbol", color="Signal")
         )
         fig_hm.update_layout(height=400)
-        st.plotly_chart(fig_hm, width='stretch')
+        st.plotly_chart(fig_hm, use_container_width=True)
 
     with tabs[2]:
-        recent_ewma = ewma_signals.iloc[-50:].T
+        recent_ewma = ewma_raw.iloc[-50:].T
         fig_hm = px.imshow(
             recent_ewma,
             color_continuous_scale='RdBu_r',
@@ -496,36 +519,36 @@ if run:
             labels=dict(x="Date", y="Symbol", color="Signal")
         )
         fig_hm.update_layout(height=400)
-        st.plotly_chart(fig_hm, width='stretch')
+        st.plotly_chart(fig_hm, use_container_width=True)
 
     # ===== DAILY RETURNS DISTRIBUTION =====
-    st.subheader("📊 Daily Returns Distribution")
+    st.subheader("Daily Returns Distribution")
 
     fig_dist = go.Figure()
 
     fig_dist.add_trace(go.Histogram(
-        x=bt_momentum["daily_returns"],
+        x=result_momentum.daily_returns,
         name='Momentum',
         opacity=0.7,
         nbinsx=50
     ))
 
     fig_dist.add_trace(go.Histogram(
-        x=bt_mr["daily_returns"],
+        x=result_mr.daily_returns,
         name='Mean Reversion',
         opacity=0.7,
         nbinsx=50
     ))
 
     fig_dist.add_trace(go.Histogram(
-        x=bt_ewma["daily_returns"],
+        x=result_ewma.daily_returns,
         name='EWMA Crossover',
         opacity=0.7,
         nbinsx=50
     ))
 
     fig_dist.add_trace(go.Histogram(
-        x=bt_combined["daily_returns"],
+        x=result_combined.daily_returns,
         name='Combined',
         opacity=0.7,
         nbinsx=50
@@ -538,7 +561,62 @@ if run:
         height=400
     )
 
-    st.plotly_chart(fig_dist, width='stretch')
+    st.plotly_chart(fig_dist, use_container_width=True)
+
+    # ===== DRAWDOWN CHART =====
+    st.subheader("Drawdown Analysis")
+    
+    fig_dd = go.Figure()
+    
+    # Compute drawdowns
+    dd_momentum = metrics_calc.rolling_drawdown(result_momentum.daily_returns)
+    dd_mr = metrics_calc.rolling_drawdown(result_mr.daily_returns)
+    dd_ewma = metrics_calc.rolling_drawdown(result_ewma.daily_returns)
+    dd_combined = metrics_calc.rolling_drawdown(result_combined.daily_returns)
+    
+    fig_dd.add_trace(go.Scatter(
+        x=dd_momentum.index,
+        y=dd_momentum.values,
+        mode='lines',
+        name='Momentum',
+        line=dict(width=1, color='#0066CC'),
+        fill='tozeroy'
+    ))
+    
+    fig_dd.add_trace(go.Scatter(
+        x=dd_mr.index,
+        y=dd_mr.values,
+        mode='lines',
+        name='Mean Reversion',
+        line=dict(width=1, color='#FF8C00'),
+        fill='tozeroy'
+    ))
+    
+    fig_dd.add_trace(go.Scatter(
+        x=dd_ewma.index,
+        y=dd_ewma.values,
+        mode='lines',
+        name='EWMA Crossover',
+        line=dict(width=1, color='#00AA00'),
+        fill='tozeroy'
+    ))
+    
+    fig_dd.add_trace(go.Scatter(
+        x=dd_combined.index,
+        y=dd_combined.values,
+        mode='lines',
+        name='Combined',
+        line=dict(width=2, color='#DD0000', dash='dash')
+    ))
+    
+    fig_dd.update_layout(
+        xaxis_title="Date",
+        yaxis_title="Drawdown",
+        hovermode='x unified',
+        height=400
+    )
+    
+    st.plotly_chart(fig_dd, use_container_width=True)
 
 else:
-    st.info("Adjust parameters and press ▶️ Run Backtest to start.")
+    st.info("Adjust parameters and press Run Backtest to start.")

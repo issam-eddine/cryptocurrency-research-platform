@@ -1,5 +1,18 @@
 """
 Backtester - Orchestrates the full backtesting pipeline.
+
+TIMING CONVENTION:
+------------------
+- weights[t] = portfolio weights determined at close of day t
+- returns[t] = (price[t] - price[t-1]) / price[t-1] (return from t-1 to t)
+- portfolio_return[t] = weights[t-1] * returns[t]
+
+This means:
+1. At close of day t-1, we determine our weights
+2. We hold these weights through day t
+3. We realize returns from close t-1 to close t
+
+The backtest correctly shifts weights by 1 day before multiplying with returns.
 """
 
 import pandas as pd

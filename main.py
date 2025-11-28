@@ -3,12 +3,11 @@ Cryptocurrency Research Platform - Main Entry Point
 
 Example usage of the pipeline architecture:
 1. DataPipeline: Fetch and preprocess data
-2. FeatureEngineer: Compute features for 3 strategies
-3. Predictor (x3): Rank and filter signals
-4. Portfolio: Combine predictors with weights
-5. TargetEngineer: Compute 1-day returns
-6. Backtester: Run backtest
-7. MetricsCalculator: Compute performance metrics
+2. Predictor (x3): Compute RAW signals for each strategy
+3. Portfolio: Combine raw signals → z-score → filter → re-zscore → weights
+4. TargetEngineer: Compute 1-day returns
+5. Backtester: Run backtest
+6. MetricsCalculator: Compute performance metrics
 """
 
 from datetime import datetime, timedelta
@@ -93,10 +92,10 @@ def main():
     print(f"Targets shape: {targets.shape}")
     
     # ==========================================================================
-    # 4. PREDICTOR CONSTRUCTION (1 predictor = 1 signal strategy)
+    # 4. CREATE PREDICTORS (1 predictor = 1 signal strategy)
     # ==========================================================================
     print("\n" + "=" * 60)
-    print("Step 4: Predictor Construction (Ranking + Filtering)")
+    print("Step 4: Create Predictors")
     print("=" * 60)
     
     # Create 3 predictors, one for each strategy
@@ -104,56 +103,65 @@ def main():
         strategy=MomentumStrategy(lookback=21),
         top_q=0.8,
         bottom_q=0.2,
-        long_short=True
+        long_short=True,
+        discrete=False
     )
     
     mean_reversion_predictor = Predictor(
         strategy=MeanReversionStrategy(lookback=21),
         top_q=0.8,
         bottom_q=0.2,
-        long_short=True
+        long_short=True,
+        discrete=False
     )
     
     ewma_predictor = Predictor(
         strategy=EWMACrossoverStrategy(fast_window=12, slow_window=26, std_window=20),
         top_q=0.8,
         bottom_q=0.2,
-        long_short=True
+        long_short=True,
+        discrete=False
     )
     
-    # Generate predictions (signals)
-    momentum_signals = momentum_predictor.predict(price_matrix)
-    mean_reversion_signals = mean_reversion_predictor.predict(price_matrix)
-    ewma_signals = ewma_predictor.predict(price_matrix)
+    # Compute RAW signals (before any processing)
+    momentum_raw = momentum_predictor.compute_raw_signal(price_matrix)
+    mean_reversion_raw = mean_reversion_predictor.compute_raw_signal(price_matrix)
+    ewma_raw = ewma_predictor.compute_raw_signal(price_matrix)
     
-    print(f"  - Momentum signals: {momentum_signals.shape}")
-    print(f"  - Mean Reversion signals: {mean_reversion_signals.shape}")
-    print(f"  - EWMA signals: {ewma_signals.shape}")
+    print(f"  - Momentum RAW signals: {momentum_raw.shape}")
+    print(f"  - Mean Reversion RAW signals: {mean_reversion_raw.shape}")
+    print(f"  - EWMA RAW signals: {ewma_raw.shape}")
     
     # ==========================================================================
-    # 5. PORTFOLIO CONSTRUCTION (combine 3 predictors)
+    # 5. PORTFOLIO CONSTRUCTION (combine RAW signals → process)
     # ==========================================================================
     print("\n" + "=" * 60)
     print("Step 5: Portfolio Construction")
     print("=" * 60)
     
-    # Create portfolio with custom weights
-    portfolio = Portfolio(predictor_weights={
-        "momentum": 0.4,
-        "mean_reversion": 0.3,
-        "ewma_crossover": 0.3
-    })
+    # Create portfolio with custom weights and filtering parameters
+    portfolio = Portfolio(
+        predictor_weights={
+            "momentum": 0.4,
+            "mean_reversion": 0.3,
+            "ewma_crossover": 0.3
+        },
+        top_q=0.8,
+        bottom_q=0.2,
+        long_short=True,
+        discrete=False,
+        enable_vol_target=False  # Turned off for now
+    )
     
-    # Add predictor signals
-    portfolio.add_predictor_signal("momentum", momentum_signals)
-    portfolio.add_predictor_signal("mean_reversion", mean_reversion_signals)
-    portfolio.add_predictor_signal("ewma_crossover", ewma_signals)
+    # Add RAW signals from each predictor
+    portfolio.add_predictor_raw_signal("momentum", momentum_raw)
+    portfolio.add_predictor_raw_signal("mean_reversion", mean_reversion_raw)
+    portfolio.add_predictor_raw_signal("ewma_crossover", ewma_raw)
     
-    # Combine signals and generate weights
-    combined_signal = portfolio.combine_signals()
-    portfolio_weights = portfolio.generate_weights(long_short=True)
+    # Process: combine raw → z-score → filter → re-zscore → weights
+    portfolio_weights = portfolio.combine_and_process()
     
-    print(f"Combined signal shape: {combined_signal.shape}")
+    print(f"Combined raw signal shape: {portfolio.get_combined_raw().shape}")
     print(f"Portfolio weights shape: {portfolio_weights.shape}")
     print(f"Predictor contributions: {portfolio.get_predictor_contribution()}")
     
