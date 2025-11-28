@@ -505,7 +505,7 @@ The factor $\frac{1}{2}$ is applied because we count each trade twice (sell and 
 - Weight changes: $\Delta w = [-0.17, -0.17, +0.33, ...]$
 - Absolute changes: $|\Delta w| = [0.17, 0.17, 0.33, ...]$
 - Sum: $0.17 + 0.17 + 0.33 = 0.67$
-- Turnover: $0.67 / 2 = 0.335 \approx 33.5\%$ of AUM
+- Turnover: $0.67 / 2 = 0.335 \simeq 33.5\%$ of AUM
 
 ### Cost Impact on Returns
 
@@ -584,7 +584,7 @@ $$ r_{t_1,t_2}^{\text{total}} = \frac{\text{Wealth}_{t_2}}{\text{Wealth}_{t_1}} 
 
 **Example**: If Wealth on day 1 is 1.001 and on day 3 is 0.999508:
 
-$$ r_{1,3} = \frac{0.999508}{1.001} - 1 \approx -0.1491\% $$
+$$ r_{1,3} = \frac{0.999508}{1.001} - 1 \simeq -0.1491\% $$
 
 ---
 
@@ -741,12 +741,12 @@ All metrics are computed on the **net daily returns** (after transaction costs).
 $$ r_{\text{annual}} = (1 + \bar{r}_{\text{daily}})^{252} - 1 $$
 
 Where:
-- $\bar{r}_{\text{daily}} = \frac{1}{T} \sum_{t=1}^{T} r_t^{\text{net}}$ = mean daily return
+- $\bar{r}_{\text{daily}} = \frac{1}{T} \sum_{t=1}^{T} r_{t}^{\text{net}}$ = mean daily return
 - **252** = number of trading days per year (standard for financial markets)
 
 **Example**: If average daily return is 0.05% (0.0005):
 
-$$ r_{\text{annual}} = (1.0005)^{252} - 1 \approx 12.7\% $$
+$$ r_{\text{annual}} = (1.0005)^{252} - 1 \simeq 12.7\% $$
 
 ### Annualized Volatility
 
@@ -757,7 +757,7 @@ Where:
 
 **Example**: If daily volatility is 1.5%:
 
-$$ \sigma_{\text{annual}} = 0.015 \times \sqrt{252} \approx 0.015 \times 15.87 \approx 23.8\% $$
+$$ \sigma_{\text{annual}} = 0.015 \times \sqrt{252} \simeq 0.015 \times 15.87 \simeq 23.8\% $$
 
 ### Sharpe Ratio
 
@@ -777,7 +777,7 @@ Where:
 
 **Example**: If annual return is 20%, volatility is 15%, and risk-free rate is 0%:
 
-$$ \text{Sharpe} = \frac{0.20 - 0}{0.15} \approx 1.33 $$
+$$ \text{Sharpe} = \frac{0.20 - 0}{0.15} \simeq 1.33 $$
 
 ### Maximum Drawdown
 
@@ -992,9 +992,9 @@ Where:
 - $\sigma_1, \sigma_2$ = standard deviations
 
 **Interpretation**:
-- $\rho \approx 1$: Strategies move together (low diversification benefit)
-- $\rho \approx 0$: Strategies independent (good diversification)
-- $\rho \approx -1$: Strategies move opposite (hedge each other)
+- $\rho \simeq 1$: Strategies move together (low diversification benefit)
+- $\rho \simeq 0$: Strategies independent (good diversification)
+- $\rho \simeq -1$: Strategies move opposite (hedge each other)
 
 Low correlation is desirable in a multi-strategy portfolio.
 
