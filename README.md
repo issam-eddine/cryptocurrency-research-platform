@@ -565,6 +565,7 @@ The cumulative return series is computed via **chained compounding**:
 $$ \text{Wealth}_{t} = \prod_{\tau=1}^{t} (1 + r_{\tau}^{\text{net}}) $$
 
 Or equivalently:
+
 $$ \text{Wealth}_{t} = (1 + r_1^{\text{net}}) \times (1 + r_2^{\text{net}}) \times \cdots \times (1 + r_t^{\text{net}}) $$
 
 This represents the **total compound growth** of \$1 invested at the start.
