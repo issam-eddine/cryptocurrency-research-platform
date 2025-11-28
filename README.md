@@ -189,9 +189,7 @@ The momentum strategy is built on the **principle of trend persistence**: assets
 
 The momentum signal for asset $i$ at time $t$ is computed as:
 
-$$
-\text{MOM}_{i,t} = \frac{P_{i,t} - P_{i,t-L}}{P_{i,t-L}}
-$$
+$$ \text{MOM}_{i,t} = \frac{P_{i,t} - P_{i,t-L}}{P_{i,t-L}} $$
 
 Where:
 - $P_{i,t}$ = closing price of asset $i$ at time $t$
@@ -410,9 +408,11 @@ This ranks assets from lowest (0) to highest (1).
 Given quantile thresholds $q_{\text{top}}$ and $q_{\text{bottom}}$:
 
 Long basket $\mathcal{L}_{t_r}$: 
+
 $$ \mathcal{L}_{t_r} = \{i : \text{Rank}_{i,t_r} \geq q_{\text{top}} \} $$
 
 Short basket $\mathcal{S}_{t_r}$: 
+
 $$ \mathcal{S}_{t_r} = \{i : \text{Rank}_{i,t_r} \leq q_{\text{bottom}} \} $$
 
 **Weights on rebalance date**:
@@ -743,6 +743,7 @@ Where:
 - **252** = number of trading days per year (standard for financial markets)
 
 **Example**: If average daily return is 0.05% (0.0005):
+
 $$ r_{\text{annual}} = (1.0005)^{252} - 1 \approx 12.7\% $$
 
 ### Annualized Volatility
@@ -753,6 +754,7 @@ Where:
 - $\sigma_{\text{daily}} = \sqrt{\frac{1}{T-1} \sum_{t=1}^{T} (r_t - \bar{r})^2}$ = sample standard deviation of daily returns
 
 **Example**: If daily volatility is 1.5%:
+
 $$ \sigma_{\text{annual}} = 0.015 \times \sqrt{252} \approx 0.015 \times 15.87 \approx 23.8\% $$
 
 ### Sharpe Ratio
@@ -772,6 +774,7 @@ Where:
 - $\text{Sharpe} > 2$: Excellent risk-adjusted returns
 
 **Example**: If annual return is 20%, volatility is 15%, and risk-free rate is 0%:
+
 $$ \text{Sharpe} = \frac{0.20 - 0}{0.15} \approx 1.33 $$
 
 ### Maximum Drawdown
