@@ -209,8 +209,9 @@ __marimo__/
 # macOS
 .DS_Store
 
+# README+.md
+documentation/README+.md
+
 # data
 data/
 
-# notebooks
-notebooks/
