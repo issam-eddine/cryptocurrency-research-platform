@@ -430,6 +430,7 @@ $$ w_{i,t_r}^{\text{short}} = \begin{cases}
 $$ w_{i,t_r} = w_{i,t_r}^{\text{long}} + w_{i,t_r}^{\text{short}} $$
 
 **Between rebalances**, weights are **held constant** (not rebalanced):
+
 $$ w_{i,t} = w_{i,t_r} \quad \forall t \in [t_r, t_{r+1}) $$
 
 ---
@@ -582,6 +583,7 @@ For any interval $[t_1, t_2]$:
 $$ r_{t_1,t_2}^{\text{total}} = \frac{\text{Wealth}_{t_2}}{\text{Wealth}_{t_1}} - 1 $$
 
 **Example**: If Wealth on day 1 is 1.001 and on day 3 is 0.999508:
+
 $$ r_{1,3} = \frac{0.999508}{1.001} - 1 \approx -0.1491\% $$
 
 ---
