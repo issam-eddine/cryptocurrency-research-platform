@@ -1,4 +1,4 @@
-# crypto-research-platform
+# cryptocurrency-research-platform
 
 ## Table of Contents
 - [Overview](#overview)
@@ -26,7 +26,7 @@
 
 ## Overview
 
-The **Crypto Research Platform** is a backtesting and analysis framework for cryptocurrency trading strategies. It implements three complementary factor-based strategies:
+The **Cryptocurrency Research Platform** is a backtesting and analysis framework for cryptocurrency trading strategies. It implements three complementary factor-based strategies:
 
 1. **Momentum Strategy** - Captures trending behavior
 2. **Mean Reversion Strategy** - Exploits price extremes
@@ -48,7 +48,7 @@ These strategies operate on a universe of top-performing cryptocurrencies (by tr
 
 Access the live application directly:
 
-[https://crypto-research-platform.streamlit.app/](https://crypto-research-platform.streamlit.app/)
+[https://cryptocurrency-research-platform.streamlit.app/](https://cryptocurrency-research-platform.streamlit.app/)
 
 ### Run Locally
 
@@ -60,8 +60,8 @@ Ensure you have Python and `uv` installed on your system.
 
 1. **Clone the repository**
    ```
-   git clone https://github.com/issam-eddine/crypto-research-platform.git
-   cd crypto-research-platform
+   git clone https://github.com/issam-eddine/cryptocurrency-research-platform.git
+   cd cryptocurrency-research-platform
    ```
 
 2. **Create a virtual environment**
@@ -96,7 +96,7 @@ The application will start in your default browser at `http://localhost:8501`.
 
 ### Directory Structure
 ```
-crypto-research-platform/
+cryptocurrency-research-platform/
 ├── app/
 │   └── streamlit_app.py              # Interactive Streamlit interface
 ├── src/

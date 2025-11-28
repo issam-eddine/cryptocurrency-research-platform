@@ -1,5 +1,5 @@
 """
-Streamlit application for crypto research platform with multi-strategy backtesting.
+Streamlit application for cryptocurrency research platform with multi-strategy backtesting.
 Includes Momentum, Mean Reversion, and EWMA Crossover strategies.
 """
 
@@ -53,13 +53,13 @@ def ewma_crossover(close: pd.Series, fast_window: int = 12,
 
 # ===== PAGE CONFIG =====
 st.set_page_config(
-    page_title="Crypto Research Platform",
+    page_title="Cryptocurrency Research Platform",
     page_icon="●",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-st.title("Crypto Research Platform - Multi-Strategy Backtester")
+st.title("Cryptocurrency Research Platform - Multi-Strategy Backtester")
 
 # ===== SIDEBAR: GLOBAL CONTROLS =====
 st.sidebar.header("🔧 Global Configuration")
