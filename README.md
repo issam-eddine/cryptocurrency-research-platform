@@ -138,7 +138,7 @@ Each time you want to run the application:
 
 ```
 source .venv/bin/activate
-streamlit run app/streamlit_app.py
+streamlit run streamlit/app.py
 ```
 
 The application will start in your default browser at `http://localhost:8501`.
@@ -190,7 +190,7 @@ The momentum strategy is built on the **principle of trend persistence**: assets
 The momentum signal for asset $i$ at time $t$ is computed as:
 
 $$
-\text{MOM}_{i,t} = \frac{P_{i,t} - P_{i,t-L}}{P_{i,t-L}} = \text{log-return over lookback}_{L}
+\text{MOM}_{i,t} = \frac{P_{i,t} - P_{i,t-L}}{P_{i,t-L}}
 $$
 
 Where:
@@ -248,7 +248,7 @@ The mean reversion strategy exploits the **mean-reverting behavior** of asset re
 
 The mean reversion signal uses a **z-score** (standardized score) approach:
 
-$$ r_{i,t} = \text{log-return}_t = \frac{P_{i,t} - P_{i,t-1}}{P_{i,t-1}} $$
+$$ r_{i,t} = \frac{P_{i,t} - P_{i,t-1}}{P_{i,t-1}} $$
 
 $$ \mu_{i,t}^{(L)} = \frac{1}{L} \sum_{j=0}^{L-1} r_{i,t-j} $$
 
@@ -263,7 +263,7 @@ $$ \text{MR}_{i,t} = -Z_{i,t}^{\text{MR}} $$
 The negative sign reflects the mean reversion logic: when the z-score is **high** (positive, i.e., return is above average), we expect **mean reversion downward**, so we want a **negative signal** to short the asset.
 
 Where:
-- $r_{i,t}$ = daily log-return
+- $r_{i,t}$ = daily return
 - $\mu_{i,t}^{(L)}$ = rolling mean of returns over lookback window $L$ (default: 14 days)
 - $\sigma_{i,t}^{(L)}$ = rolling standard deviation of returns
 - The signal is **shifted forward by 1 bar** to prevent look-ahead bias
