@@ -741,7 +741,7 @@ All metrics are computed on the **net daily returns** (after transaction costs).
 $$ r_{\text{annual}} = (1 + \bar{r}_{\text{daily}})^{252} - 1 $$
 
 Where:
-- $\bar{r}_{\text{daily}} = \frac{1}{T} \sum_{t=1}^{T} r_t^{\text{net}}$ = mean daily return
+- . $\bar{r}_{\text{daily}} = \frac{1}{T} \sum_{t=1}^{T} r_t^{\text{net}}$ = mean daily return
 - **252** = number of trading days per year (standard for financial markets)
 
 **Example**: If average daily return is 0.05% (0.0005):
