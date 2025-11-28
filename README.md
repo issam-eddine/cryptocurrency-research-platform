@@ -1,21 +1,74 @@
-# cryptocurrency-research-platform
+# Cryptocurrency Research Platform <!-- omit in toc -->
 
-## Table of Contents
+## Table of Contents <!-- omit in toc -->
+
 - [Overview](#overview)
-- [How to Run](#how-to-run)
+- [How to run](#how-to-run)
   - [Try Online](#try-online)
   - [Run Locally](#run-locally)
+    - [Prerequisites](#prerequisites)
+    - [Installation Steps](#installation-steps)
+    - [Running the Application](#running-the-application)
 - [Architecture](#architecture)
   - [Directory Structure](#directory-structure)
   - [Data Flow Pipeline](#data-flow-pipeline)
 - [Three Core Strategies](#three-core-strategies)
+  - [1. Momentum Strategy](#1-momentum-strategy)
+    - [Philosophy](#philosophy)
+    - [Signal Calculation](#signal-calculation)
+    - [Signal Interpretation](#signal-interpretation)
+    - [Portfolio Construction from Momentum Signals](#portfolio-construction-from-momentum-signals)
+    - [Parameters](#parameters)
+  - [2. Mean Reversion Strategy](#2-mean-reversion-strategy)
+    - [Philosophy](#philosophy-1)
+    - [Signal Calculation](#signal-calculation-1)
+    - [Signal Interpretation](#signal-interpretation-1)
+    - [Portfolio Construction](#portfolio-construction)
+    - [Parameters](#parameters-1)
+  - [3. EWMA Crossover Strategy](#3-ewma-crossover-strategy)
+    - [Philosophy](#philosophy-2)
+    - [Signal Calculation](#signal-calculation-2)
+    - [Signal Interpretation](#signal-interpretation-2)
+    - [Portfolio Construction](#portfolio-construction-1)
+    - [Parameters](#parameters-2)
 - [Mathematical Formulations](#mathematical-formulations)
-- [Portfolio Construction](#portfolio-construction)
+  - [General Framework](#general-framework)
+  - [Cross-Sectional Ranking](#cross-sectional-ranking)
+  - [Portfolio Weight Construction](#portfolio-weight-construction)
+- [Portfolio Construction](#portfolio-construction-2)
+  - [Multi-Strategy Combination](#multi-strategy-combination)
+  - [Gross vs Net Exposure](#gross-vs-net-exposure)
 - [Cost Calculations](#cost-calculations)
+  - [Transaction Costs](#transaction-costs)
+  - [Turnover Calculation](#turnover-calculation)
+  - [Cost Impact on Returns](#cost-impact-on-returns)
+  - [Typical Cost Breakdown](#typical-cost-breakdown)
 - [Returns Calculations](#returns-calculations)
+  - [Gross Daily Returns](#gross-daily-returns)
+  - [Cost-Adjusted Returns](#cost-adjusted-returns)
+  - [Cumulative Returns](#cumulative-returns)
+  - [Period Returns](#period-returns)
 - [Backtesting Methodology](#backtesting-methodology)
+  - [Core Backtesting Algorithm](#core-backtesting-algorithm)
+  - [Implementation (Python)](#implementation-python)
+  - [Weight Generation](#weight-generation)
+  - [Return Computation with Costs](#return-computation-with-costs)
+  - [Rebalancing Schedule](#rebalancing-schedule)
 - [Performance Metrics](#performance-metrics)
+  - [Annualized Return](#annualized-return)
+  - [Annualized Volatility](#annualized-volatility)
+  - [Sharpe Ratio](#sharpe-ratio)
+  - [Maximum Drawdown](#maximum-drawdown)
+  - [Information Ratio (Optional)](#information-ratio-optional)
 - [Implementation Details](#implementation-details)
+  - [Data Fetching \& Caching](#data-fetching--caching)
+  - [Data Alignment](#data-alignment)
+  - [Signal Computation](#signal-computation)
+  - [Universe Selection](#universe-selection)
+  - [Handling Edge Cases](#handling-edge-cases)
+- [Configuration \& Parameters](#configuration--parameters)
+  - [Interactive Controls (Streamlit UI)](#interactive-controls-streamlit-ui)
+  - [Default Parameter Recommendations](#default-parameter-recommendations)
 - [Advanced Topics](#advanced-topics)
   - [Correlation Analysis](#correlation-analysis)
   - [Portfolio Exposure Metrics](#portfolio-exposure-metrics)
@@ -356,10 +409,10 @@ This ranks assets from lowest (0) to highest (1).
 
 Given quantile thresholds $q_{\text{top}}$ and $q_{\text{bottom}}$:
 
-**Long basket** $\mathcal{L}_{t_r}$:
+Long basket $\mathcal{L}_{t_r}$: 
 $$ \mathcal{L}_{t_r} = \{i : \text{Rank}_{i,t_r} \geq q_{\text{top}} \} $$
 
-**Short basket** $\mathcal{S}_{t_r}$:
+Short basket $\mathcal{S}_{t_r}$: 
 $$ \mathcal{S}_{t_r} = \{i : \text{Rank}_{i,t_r} \leq q_{\text{bottom}} \} $$
 
 **Weights on rebalance date**:
