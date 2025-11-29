@@ -56,14 +56,14 @@ class Backtester:
     """
     
     def __init__(self, 
-                 rebalance_frequency: int = 21,
+                 rebalance_frequency: int = 24,
                  transaction_cost_bps: float = 10.0,
                  slippage_bps: float = 5.0):
         """
         Initialize the backtester.
         
         Args:
-            rebalance_frequency: Days between rebalancing (default 21 = monthly)
+            rebalance_frequency: Periods between rebalancing (default 24 = daily for hourly data)
             transaction_cost_bps: Transaction cost in basis points
             slippage_bps: Slippage estimate in basis points
         """
@@ -204,20 +204,20 @@ class Backtester:
         return strategy_result, benchmark_result
     
     def compute_rolling_metrics(self, returns: pd.Series, 
-                                 window: int = 63) -> pd.DataFrame:
+                                 window: int = 168) -> pd.DataFrame:
         """
         Compute rolling performance metrics.
         
         Args:
-            returns: Daily returns series
-            window: Rolling window size
+            returns: Hourly returns series
+            window: Rolling window size (default 168 = 1 week of hourly data)
             
         Returns:
             DataFrame with rolling metrics
         """
         rolling_sharpe = self.metrics_calculator.rolling_sharpe(returns, window)
         rolling_dd = self.metrics_calculator.rolling_drawdown(returns)
-        rolling_vol = returns.rolling(window).std() * np.sqrt(252)
+        rolling_vol = returns.rolling(window).std() * np.sqrt(8760)
         
         return pd.DataFrame({
             "rolling_sharpe": rolling_sharpe,

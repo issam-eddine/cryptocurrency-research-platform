@@ -3,8 +3,8 @@ Cryptocurrency Research Platform - Main Entry Point
 
 Example usage of the pipeline architecture:
 1. DataPipeline: Fetch and preprocess data
-2. Predictor (x3): Compute RAW signals for each strategy
-3. Portfolio: Combine raw signals → z-score → filter → re-zscore → weights
+2. Predictor (x3): Compute UNFILTERED signals for each strategy (raw → z-score)
+3. Portfolio: Combine unfiltered signals → filter → re-zscore → weights
 4. TargetEngineer: Compute 1-day returns
 5. Backtester: Run backtest
 6. MetricsCalculator: Compute performance metrics
@@ -41,8 +41,9 @@ def main():
     symbols = ["BTC/USDT", "ETH/USDT", "BNB/USDT", "XRP/USDT", "ADA/USDT", 
                "SOL/USDT", "DOGE/USDT"]
     
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=365 * 2)  # 2 years of data
+    # Default: Nov 1, 2024 to Dec 31, 2024 (2 months of hourly data)
+    start_date = datetime(2024, 11, 1)
+    end_date = datetime(2024, 12, 31)
     
     # Fetch data
     raw_data = data_pipeline.fetch(
@@ -62,18 +63,19 @@ def main():
     print(f"Date range: {price_matrix.index[0]} to {price_matrix.index[-1]}")
     
     # ==========================================================================
-    # 2. FEATURE ENGINEERING (3 strategies)
+    # 2. FEATURE ENGINEERING (3 strategies) - Hourly parameters
     # ==========================================================================
     print("\n" + "=" * 60)
     print("Step 2: Feature Engineering")
     print("=" * 60)
     
+    # Hourly lookbacks: 24h = 1 day, 168h = 1 week, etc.
     feature_engineer = FeatureEngineer(
-        momentum_lookback=21,
-        mean_reversion_lookback=21,
-        ewma_fast=12,
-        ewma_slow=26,
-        ewma_std=20
+        momentum_lookback=168,       # 1 week (168 hours)
+        mean_reversion_lookback=72,  # 3 days (72 hours)
+        ewma_fast=24,                # 1 day
+        ewma_slow=168,               # 1 week
+        ewma_std=72                  # 3 days
     )
     
     features = feature_engineer.compute_features(price_matrix)
@@ -98,9 +100,9 @@ def main():
     print("Step 4: Create Predictors")
     print("=" * 60)
     
-    # Create 3 predictors, one for each strategy
+    # Create 3 predictors, one for each strategy (hourly lookbacks)
     momentum_predictor = Predictor(
-        strategy=MomentumStrategy(lookback=21),
+        strategy=MomentumStrategy(lookback=168),  # 1 week
         top_q=0.8,
         bottom_q=0.2,
         long_short=True,
@@ -108,7 +110,7 @@ def main():
     )
     
     mean_reversion_predictor = Predictor(
-        strategy=MeanReversionStrategy(lookback=21),
+        strategy=MeanReversionStrategy(lookback=72),  # 3 days
         top_q=0.8,
         bottom_q=0.2,
         long_short=True,
@@ -116,24 +118,24 @@ def main():
     )
     
     ewma_predictor = Predictor(
-        strategy=EWMACrossoverStrategy(fast_window=12, slow_window=26, std_window=20),
+        strategy=EWMACrossoverStrategy(fast_window=24, slow_window=168, std_window=72),
         top_q=0.8,
         bottom_q=0.2,
         long_short=True,
         discrete=False
     )
     
-    # Compute RAW signals (before any processing)
-    momentum_raw = momentum_predictor.compute_raw_signal(price_matrix)
-    mean_reversion_raw = mean_reversion_predictor.compute_raw_signal(price_matrix)
-    ewma_raw = ewma_predictor.compute_raw_signal(price_matrix)
+    # Compute UNFILTERED signals (raw → z-score)
+    momentum_unfiltered = momentum_predictor.compute_unfiltered_signal(price_matrix)
+    mean_reversion_unfiltered = mean_reversion_predictor.compute_unfiltered_signal(price_matrix)
+    ewma_unfiltered = ewma_predictor.compute_unfiltered_signal(price_matrix)
     
-    print(f"  - Momentum RAW signals: {momentum_raw.shape}")
-    print(f"  - Mean Reversion RAW signals: {mean_reversion_raw.shape}")
-    print(f"  - EWMA RAW signals: {ewma_raw.shape}")
+    print(f"  - Momentum UNFILTERED signals: {momentum_unfiltered.shape}")
+    print(f"  - Mean Reversion UNFILTERED signals: {mean_reversion_unfiltered.shape}")
+    print(f"  - EWMA UNFILTERED signals: {ewma_unfiltered.shape}")
     
     # ==========================================================================
-    # 5. PORTFOLIO CONSTRUCTION (combine RAW signals → process)
+    # 5. PORTFOLIO CONSTRUCTION (combine UNFILTERED signals → process)
     # ==========================================================================
     print("\n" + "=" * 60)
     print("Step 5: Portfolio Construction")
@@ -153,15 +155,15 @@ def main():
         enable_vol_target=False  # Turned off for now
     )
     
-    # Add RAW signals from each predictor
-    portfolio.add_predictor_raw_signal("momentum", momentum_raw)
-    portfolio.add_predictor_raw_signal("mean_reversion", mean_reversion_raw)
-    portfolio.add_predictor_raw_signal("ewma_crossover", ewma_raw)
+    # Add UNFILTERED signals from each predictor (z-scored but not filtered)
+    portfolio.add_predictor_unfiltered_signal("momentum", momentum_unfiltered)
+    portfolio.add_predictor_unfiltered_signal("mean_reversion", mean_reversion_unfiltered)
+    portfolio.add_predictor_unfiltered_signal("ewma_crossover", ewma_unfiltered)
     
-    # Process: combine raw → z-score → filter → re-zscore → weights
+    # Process: combine unfiltered → filter → re-zscore → weights
     portfolio_weights = portfolio.combine_and_process()
     
-    print(f"Combined raw signal shape: {portfolio.get_combined_raw().shape}")
+    print(f"Combined unfiltered signal shape: {portfolio.get_combined_unfiltered().shape}")
     print(f"Portfolio weights shape: {portfolio_weights.shape}")
     print(f"Predictor contributions: {portfolio.get_predictor_contribution()}")
     
@@ -173,7 +175,7 @@ def main():
     print("=" * 60)
     
     backtester = Backtester(
-        rebalance_frequency=21,  # Monthly rebalancing
+        rebalance_frequency=24,  # Daily rebalancing (24 hours)
         transaction_cost_bps=10.0,
         slippage_bps=5.0
     )

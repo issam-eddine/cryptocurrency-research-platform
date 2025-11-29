@@ -34,7 +34,7 @@ class DataPipeline:
         self._raw_data: Dict[str, pd.DataFrame] = {}
         self._price_matrix: Optional[pd.DataFrame] = None
     
-    def fetch(self, symbols: List[str], timeframe: str = "1d",
+    def fetch(self, symbols: List[str], timeframe: str = "1h",
               start_date: Optional[datetime] = None,
               end_date: Optional[datetime] = None,
               force_refresh: bool = False) -> Dict[str, pd.DataFrame]:
@@ -61,7 +61,7 @@ class DataPipeline:
         
         return self._raw_data
     
-    def _fetch_single(self, symbol: str, timeframe: str = "1d",
+    def _fetch_single(self, symbol: str, timeframe: str = "1h",
                       force_refresh: bool = False) -> pd.DataFrame:
         """Fetch OHLCV for a single symbol with caching."""
         if not force_refresh:
@@ -78,8 +78,8 @@ class DataPipeline:
         
         return df
     
-    def _fetch_from_exchange(self, symbol: str, timeframe: str = "1d",
-                             limit: int = 365 * 2) -> pd.DataFrame:
+    def _fetch_from_exchange(self, symbol: str, timeframe: str = "1h",
+                             limit: int = 1000) -> pd.DataFrame:
         """Fetch OHLCV directly from the exchange."""
         all_rows = []
         
@@ -150,12 +150,12 @@ class DataPipeline:
         
         return df
     
-    def get_price_matrix(self, freq: str = "1D") -> pd.DataFrame:
+    def get_price_matrix(self, freq: str = "1h") -> pd.DataFrame:
         """
         Build aligned close price matrix across all symbols.
         
         Args:
-            freq: Resampling frequency (default "1D")
+            freq: Resampling frequency (default "1h" for hourly)
             
         Returns:
             DataFrame with dates as index, symbols as columns, close prices as values

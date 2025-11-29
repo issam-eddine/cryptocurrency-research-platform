@@ -50,30 +50,38 @@ class MetricsCalculator:
     - Win rate and profit factor
     """
     
-    def __init__(self, periods_per_year: int = 252, risk_free_rate: float = 0.0):
+    def __init__(self, periods_per_year: int = 8760, risk_free_rate: float = 0.0):
         """
         Initialize the metrics calculator.
         
         Args:
-            periods_per_year: Trading periods per year (252 for daily)
+            periods_per_year: Trading periods per year (8760 = 365*24 for hourly crypto)
             risk_free_rate: Annual risk-free rate for Sharpe calculation
         """
         self.periods_per_year = periods_per_year
         self.risk_free_rate = risk_free_rate
-    
+
     def annualized_return(self, returns: pd.Series) -> float:
-        """Calculate annualized return."""
+        """Calculate annualized return using geometric mean."""
         if returns.empty:
             return 0.0
-        mean_return = returns.mean()
-        return (1.0 + mean_return) ** self.periods_per_year - 1.0
-    
+        
+        # Compound all returns using geometric mean
+        total_return = (1.0 + returns).prod() - 1.0
+        
+        # Calculate number of years
+        n_periods = len(returns)
+        n_years = n_periods / self.periods_per_year
+
+        # Annualize
+        return (1.0 + total_return) ** (1.0 / n_years) - 1.0
+
     def annualized_volatility(self, returns: pd.Series) -> float:
         """Calculate annualized volatility."""
         if returns.empty:
             return 0.0
         return returns.std() * np.sqrt(self.periods_per_year)
-    
+
     def sharpe_ratio(self, returns: pd.Series) -> float:
         """Calculate Sharpe ratio."""
         ann_ret = self.annualized_return(returns)
@@ -83,7 +91,7 @@ class MetricsCalculator:
             return 0.0
         
         return (ann_ret - self.risk_free_rate) / ann_vol
-    
+
     def max_drawdown(self, returns: pd.Series) -> float:
         """Calculate maximum drawdown."""
         if returns.empty:
@@ -94,7 +102,7 @@ class MetricsCalculator:
         drawdown = (cumulative - peak) / peak
         
         return drawdown.min()
-    
+
     def calmar_ratio(self, returns: pd.Series) -> float:
         """Calculate Calmar ratio (annual return / max drawdown)."""
         ann_ret = self.annualized_return(returns)
@@ -104,7 +112,7 @@ class MetricsCalculator:
             return 0.0
         
         return ann_ret / mdd
-    
+
     def win_rate(self, returns: pd.Series) -> float:
         """Calculate win rate (% of positive returns)."""
         if returns.empty:
@@ -114,7 +122,7 @@ class MetricsCalculator:
         total = len(returns)
         
         return positive / total if total > 0 else 0.0
-    
+
     def profit_factor(self, returns: pd.Series) -> float:
         """Calculate profit factor (gross profit / gross loss)."""
         if returns.empty:
@@ -127,7 +135,8 @@ class MetricsCalculator:
             return float('inf') if gains > 0 else 0.0
         
         return gains / losses
-    
+
+
     def compute_all(self, returns: pd.Series) -> PerformanceMetrics:
         """
         Compute all performance metrics.
@@ -189,13 +198,13 @@ class MetricsCalculator:
         """Compute cumulative returns."""
         return (1 + returns).cumprod()
     
-    def rolling_sharpe(self, returns: pd.Series, window: int = 63) -> pd.Series:
+    def rolling_sharpe(self, returns: pd.Series, window: int = 168) -> pd.Series:
         """
         Compute rolling Sharpe ratio.
         
         Args:
             returns: Series of period returns
-            window: Rolling window size (default 63 = ~3 months)
+            window: Rolling window size (default 168 = 1 week of hourly data)
             
         Returns:
             Rolling Sharpe ratio series

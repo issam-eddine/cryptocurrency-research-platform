@@ -3,8 +3,9 @@ Predictor - Wraps a SignalStrategy with z-scoring and filtering.
 
 Workflow:
 1. compute_raw_signal(): Just the transformation (momentum, mean_rev, etc)
-2. For multi-strategy: Portfolio combines raw signals
-3. For single strategy: process_signal() does z-score → filter → re-zscore
+2. compute_unfiltered_signal(): raw signal → cross-sectional z-score
+3. For multi-strategy: Portfolio combines UNFILTERED signals (z-scored, not filtered)
+4. For single strategy: process_signal() does z-score → filter → re-zscore
 """
 
 import pandas as pd
@@ -48,6 +49,7 @@ class Predictor:
         self.discrete = discrete
         
         self._raw_signal: Optional[pd.DataFrame] = None
+        self._unfiltered_signal: Optional[pd.DataFrame] = None
         self._processed_signal: Optional[pd.DataFrame] = None
     
     @property
@@ -67,6 +69,30 @@ class Predictor:
         """
         self._raw_signal = self.strategy.compute_universe(price_matrix)
         return self._raw_signal
+    
+    def compute_unfiltered_signal(self, price_matrix: pd.DataFrame) -> pd.DataFrame:
+        """
+        Compute unfiltered signal (raw signal → cross-sectional z-score).
+        
+        This is the signal that should be combined across predictors in a portfolio,
+        as it puts different strategies on a comparable scale before combining.
+        
+        Args:
+            price_matrix: DataFrame with dates as index, symbols as columns
+            
+        Returns:
+            Unfiltered signal DataFrame (z-scored but not filtered)
+        """
+        # Compute raw signal first
+        raw_signal = self.compute_raw_signal(price_matrix)
+        
+        # Apply cross-sectional z-score
+        self._unfiltered_signal = self._zscore(raw_signal)
+        return self._unfiltered_signal
+    
+    def get_unfiltered_signal(self) -> Optional[pd.DataFrame]:
+        """Return the most recent unfiltered signal (z-scored but not filtered)."""
+        return self._unfiltered_signal
     
     def process_signal(self, raw_signal: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         """

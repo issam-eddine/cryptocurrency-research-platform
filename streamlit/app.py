@@ -57,9 +57,9 @@ col1, col2 = st.sidebar.columns(2)
 with col1:
     start_date = st.date_input(
         "Start date",
-        value=datetime(2023, 1, 1),
+        value=datetime(2024, 11, 1),
         min_value=datetime(2020, 1, 1),
-        max_value=datetime(2024, 12, 31)
+        max_value=datetime(2025, 12, 31)
     )
 
 with col2:
@@ -67,7 +67,7 @@ with col2:
         "End date",
         value=datetime(2024, 12, 31),
         min_value=datetime(2020, 1, 1),
-        max_value=datetime(2024, 12, 31)
+        max_value=datetime(2025, 12, 31)
     )
 
 # Validate date range
@@ -80,32 +80,32 @@ if start_date_ts >= end_date_ts:
 
 st.sidebar.markdown("---")
 
-# ===== MOMENTUM STRATEGY PARAMETERS =====
+# ===== MOMENTUM STRATEGY PARAMETERS (Hourly) =====
 st.sidebar.subheader("Momentum Strategy")
-momentum_lookback = st.sidebar.slider("Momentum Lookback", 5, 120, 21, key="mom_lookback")
-momentum_rebalance = st.sidebar.slider("Momentum Rebalance (days)", 1, 63, 21, key="mom_rebal")
+momentum_lookback = st.sidebar.slider("Momentum Lookback (hours)", 12, 336, 168, key="mom_lookback")  # 168h = 1 week
+momentum_rebalance = st.sidebar.slider("Momentum Rebalance (hours)", 1, 168, 24, key="mom_rebal")  # 24h = daily
 momentum_top_q_inv = st.sidebar.slider("Momentum Top quantile (long)", 0.10, 0.50, 0.20, key="mom_top")
 momentum_top_q = 1 - momentum_top_q_inv
 momentum_bottom_q = st.sidebar.slider("Momentum Bottom quantile (short)", 0.10, 0.50, 0.20, key="mom_bot")
 
 st.sidebar.markdown("---")
 
-# ===== MEAN REVERSION STRATEGY PARAMETERS =====
+# ===== MEAN REVERSION STRATEGY PARAMETERS (Hourly) =====
 st.sidebar.subheader("Mean Reversion Strategy")
-mr_lookback = st.sidebar.slider("Mean Reversion Lookback", 5, 120, 14, key="mr_lookback")
-mr_rebalance = st.sidebar.slider("Mean Reversion Rebalance (days)", 1, 63, 7, key="mr_rebal")
+mr_lookback = st.sidebar.slider("Mean Reversion Lookback (hours)", 12, 336, 72, key="mr_lookback")  # 72h = 3 days
+mr_rebalance = st.sidebar.slider("Mean Reversion Rebalance (hours)", 1, 168, 12, key="mr_rebal")  # 12h
 mr_top_q_inv = st.sidebar.slider("Mean Reversion Top quantile (long)", 0.10, 0.50, 0.30, key="mr_top")
 mr_top_q = 1 - mr_top_q_inv
 mr_bottom_q = st.sidebar.slider("Mean Reversion Bottom quantile (short)", 0.10, 0.50, 0.30, key="mr_bot")
 
 st.sidebar.markdown("---")
 
-# ===== EWMA CROSSOVER STRATEGY PARAMETERS =====
+# ===== EWMA CROSSOVER STRATEGY PARAMETERS (Hourly) =====
 st.sidebar.subheader("EWMA Crossover Strategy")
-ewma_fast_window = st.sidebar.slider("EWMA Fast Window", 5, 50, 12, key="ewma_fast")
-ewma_slow_window = st.sidebar.slider("EWMA Slow Window", 20, 200, 26, key="ewma_slow")
-ewma_std_window = st.sidebar.slider("EWMA Std Dev Window", 10, 100, 20, key="ewma_std")
-ewma_rebalance = st.sidebar.slider("EWMA Rebalance (days)", 1, 63, 21, key="ewma_rebal")
+ewma_fast_window = st.sidebar.slider("EWMA Fast Window (hours)", 6, 72, 24, key="ewma_fast")  # 24h = 1 day
+ewma_slow_window = st.sidebar.slider("EWMA Slow Window (hours)", 48, 336, 168, key="ewma_slow")  # 168h = 1 week
+ewma_std_window = st.sidebar.slider("EWMA Std Dev Window (hours)", 12, 168, 72, key="ewma_std")  # 72h = 3 days
+ewma_rebalance = st.sidebar.slider("EWMA Rebalance (hours)", 1, 168, 24, key="ewma_rebal")  # 24h = daily
 ewma_top_q_inv = st.sidebar.slider("EWMA Top quantile (long)", 0.10, 0.50, 0.20, key="ewma_top")
 ewma_top_q = 1 - ewma_top_q_inv
 ewma_bottom_q = st.sidebar.slider("EWMA Bottom quantile (short)", 0.10, 0.50, 0.20, key="ewma_bot")
@@ -186,7 +186,7 @@ if run:
     col1, col2, col3 = st.columns(3)
     col1.metric("Symbols Loaded", len(closes.columns))
     col2.metric("Data Range", f"{closes.index.min().date()} to {closes.index.max().date()}")
-    col3.metric("Trading Days", len(closes))
+    col3.metric("Hourly Bars", len(closes))
 
     # ===== COMPUTE SIGNALS USING PIPELINE =====
     with st.spinner("Computing signals..."):
@@ -219,10 +219,10 @@ if run:
             discrete=False
         )
         
-        # Compute RAW signals
-        momentum_raw = momentum_predictor.compute_raw_signal(closes)
-        mr_raw = mr_predictor.compute_raw_signal(closes)
-        ewma_raw = ewma_predictor.compute_raw_signal(closes)
+        # Compute UNFILTERED signals (raw → z-score)
+        momentum_unfiltered = momentum_predictor.compute_unfiltered_signal(closes)
+        mr_unfiltered = mr_predictor.compute_unfiltered_signal(closes)
+        ewma_unfiltered = ewma_predictor.compute_unfiltered_signal(closes)
         
         # Process signals for individual strategy backtests
         momentum_signals = momentum_predictor.process_signal()
@@ -257,7 +257,7 @@ if run:
         )
         result_ewma = bt_ewma.run(ewma_signals, closes)
         
-        # Combined portfolio using raw signals
+        # Combined portfolio using unfiltered signals (z-scored)
         portfolio = Portfolio(
             predictor_weights={
                 "momentum": momentum_weight,
@@ -270,9 +270,9 @@ if run:
             discrete=False
         )
         
-        portfolio.add_predictor_raw_signal("momentum", momentum_raw)
-        portfolio.add_predictor_raw_signal("mean_reversion", mr_raw)
-        portfolio.add_predictor_raw_signal("ewma", ewma_raw)
+        portfolio.add_predictor_unfiltered_signal("momentum", momentum_unfiltered)
+        portfolio.add_predictor_unfiltered_signal("mean_reversion", mr_unfiltered)
+        portfolio.add_predictor_unfiltered_signal("ewma", ewma_unfiltered)
         
         combined_weights = portfolio.combine_and_process()
         
@@ -284,6 +284,39 @@ if run:
             slippage_bps=5.0
         )
         result_combined = bt_combined.run(combined_weights, closes)
+
+    # ===== INDIVIDUAL ASSET CUMULATIVE RETURNS =====
+    st.subheader("Individual Asset Cumulative Returns")
+    
+    # Compute daily returns and cumulative returns starting at 1
+    asset_returns = closes.pct_change().fillna(0)
+    asset_cumulative = (1 + asset_returns).cumprod()
+    
+    fig_assets = go.Figure()
+    
+    # Color palette for assets
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+              '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5']
+    
+    for i, col in enumerate(asset_cumulative.columns):
+        fig_assets.add_trace(go.Scatter(
+            x=asset_cumulative.index,
+            y=asset_cumulative[col].values,
+            mode='lines',
+            name=col.replace('/USDT', ''),
+            line=dict(width=2, color=colors[i % len(colors)])
+        ))
+    
+    fig_assets.update_layout(
+        xaxis_title="Date",
+        yaxis_title="Cumulative Returns",
+        hovermode='x unified',
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+        height=500
+    )
+    
+    st.plotly_chart(fig_assets, use_container_width=True)
 
     # ===== CUMULATIVE RETURNS CHART =====
     st.subheader("Cumulative Returns: All Strategies")
@@ -469,13 +502,13 @@ if run:
     )
 
     # ===== SIGNAL HEATMAPS =====
-    st.subheader("Strategy Signals (Latest 50 Bars)")
+    st.subheader("Strategy Signals - Unfiltered Z-Scores (Latest 50 Hours)")
 
-    # Calculate global min/max across all signals
+    # Calculate global min/max across all unfiltered signals
     all_signals = pd.concat([
-        momentum_raw.iloc[-50:],
-        mr_raw.iloc[-50:],
-        ewma_raw.iloc[-50:]
+        momentum_unfiltered.iloc[-50:],
+        mr_unfiltered.iloc[-50:],
+        ewma_unfiltered.iloc[-50:]
     ])
     vmin = all_signals.min().min()
     vmax = all_signals.max().max()
@@ -483,46 +516,46 @@ if run:
     tabs = st.tabs(["Momentum", "Mean Reversion", "EWMA Crossover"])
 
     with tabs[0]:
-        recent_momentum = momentum_raw.iloc[-50:].T
+        recent_momentum = momentum_unfiltered.iloc[-50:].T
         fig_hm = px.imshow(
             recent_momentum,
             color_continuous_scale='RdBu_r',
             zmin=vmin,
             zmax=vmax,
             text_auto='.2f',
-            labels=dict(x="Date", y="Symbol", color="Signal")
+            labels=dict(x="Date", y="Symbol", color="Z-Score")
         )
         fig_hm.update_layout(height=400)
         st.plotly_chart(fig_hm, use_container_width=True)
 
     with tabs[1]:
-        recent_mr = mr_raw.iloc[-50:].T
+        recent_mr = mr_unfiltered.iloc[-50:].T
         fig_hm = px.imshow(
             recent_mr,
             color_continuous_scale='RdBu_r',
             zmin=vmin,
             zmax=vmax,
             text_auto='.2f',
-            labels=dict(x="Date", y="Symbol", color="Signal")
+            labels=dict(x="Date", y="Symbol", color="Z-Score")
         )
         fig_hm.update_layout(height=400)
         st.plotly_chart(fig_hm, use_container_width=True)
 
     with tabs[2]:
-        recent_ewma = ewma_raw.iloc[-50:].T
+        recent_ewma = ewma_unfiltered.iloc[-50:].T
         fig_hm = px.imshow(
             recent_ewma,
             color_continuous_scale='RdBu_r',
             zmin=vmin,
             zmax=vmax,
             text_auto='.2f',
-            labels=dict(x="Date", y="Symbol", color="Signal")
+            labels=dict(x="Date", y="Symbol", color="Z-Score")
         )
         fig_hm.update_layout(height=400)
         st.plotly_chart(fig_hm, use_container_width=True)
 
-    # ===== DAILY RETURNS DISTRIBUTION =====
-    st.subheader("Daily Returns Distribution")
+    # ===== HOURLY RETURNS DISTRIBUTION =====
+    st.subheader("Hourly Returns Distribution")
 
     fig_dist = go.Figure()
 
@@ -556,7 +589,7 @@ if run:
 
     fig_dist.update_layout(
         barmode='overlay',
-        xaxis_title='Daily Returns',
+        xaxis_title='Hourly Returns',
         yaxis_title='Frequency',
         height=400
     )

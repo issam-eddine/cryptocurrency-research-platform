@@ -2,12 +2,14 @@
 Portfolio - Combines multiple predictors with configurable weights.
 
 Workflow (correct implementation):
-1. Collect RAW signals from each predictor (before any processing)
-2. Combine: raw_combined = sum(allocation * raw_signal)
-3. Z-score the combined raw signal
-4. Filter by quantiles
-5. Re-zscore on active names
-6. weights = final signal (vol targeting optional, disabled by default)
+1. Collect UNFILTERED signals from each predictor (raw signal → z-score)
+2. Combine: unfiltered_combined = sum(allocation * unfiltered_signal)
+3. Filter by quantiles
+4. Re-zscore on active names
+5. weights = final signal (vol targeting optional, disabled by default)
+
+Note: Combining at the unfiltered signal level (z-scored) ensures signals from
+different strategies are on a comparable scale before combining.
 """
 
 import pandas as pd
@@ -20,12 +22,15 @@ class Portfolio:
     Portfolio that combines multiple predictors (strategies).
     
     The portfolio:
-    1. Collects RAW signals from each predictor
+    1. Collects UNFILTERED signals from each predictor (z-scored but not filtered)
     2. Combines them using weighted average
-    3. Z-scores the combined signal
-    4. Filters by quantiles
-    5. Re-z-scores on active names
-    6. Returns final weights (= final signal for now)
+    3. Filters by quantiles
+    4. Re-z-scores on active names
+    5. Returns final weights (= final signal for now)
+    
+    Note: Combining at the unfiltered signal level ensures signals are on a
+    comparable scale before combining, since raw signals from different
+    strategies have different distributions.
     """
     
     def __init__(self, 
@@ -57,63 +62,59 @@ class Portfolio:
         self.enable_vol_target = enable_vol_target
         self.vol_target = vol_target
         
-        self._raw_signals: Dict[str, pd.DataFrame] = {}
-        self._combined_raw: Optional[pd.DataFrame] = None
+        self._unfiltered_signals: Dict[str, pd.DataFrame] = {}
+        self._combined_unfiltered: Optional[pd.DataFrame] = None
         self._combined_signal: Optional[pd.DataFrame] = None
         self._weights: Optional[pd.DataFrame] = None
     
-    def add_predictor_raw_signal(self, name: str, raw_signal: pd.DataFrame):
+    def add_predictor_unfiltered_signal(self, name: str, unfiltered_signal: pd.DataFrame):
         """
-        Add RAW signal from a predictor (before z-scoring/filtering).
+        Add UNFILTERED signal from a predictor (z-scored but not filtered).
         
         Args:
             name: Predictor name
-            raw_signal: Raw signal DataFrame (from Predictor.compute_raw_signal())
+            unfiltered_signal: Unfiltered signal DataFrame (from Predictor.compute_unfiltered_signal())
         """
-        self._raw_signals[name] = raw_signal
+        self._unfiltered_signals[name] = unfiltered_signal
     
     def combine_and_process(self) -> pd.DataFrame:
         """
-        Combine raw signals and process to final weights.
+        Combine unfiltered signals and process to final weights.
         
         Steps:
-        1. Weighted combination of raw signals
-        2. Z-score on full universe
-        3. Filter by quantiles
-        4. Re-zscore on active names
-        5. Apply volatility targeting (if enabled)
+        1. Weighted combination of unfiltered signals (already z-scored)
+        2. Filter by quantiles
+        3. Re-zscore on active names
+        4. Apply volatility targeting (if enabled)
         
         Returns:
             Final weights DataFrame
         """
-        if not self._raw_signals:
-            raise ValueError("No raw signals added. Call add_predictor_raw_signal first.")
+        if not self._unfiltered_signals:
+            raise ValueError("No unfiltered signals added. Call add_predictor_unfiltered_signal first.")
         
-        # Step 1: Combine raw signals with weights
-        self._combined_raw = self._combine_raw_signals()
+        # Step 1: Combine unfiltered signals with weights
+        self._combined_unfiltered = self._combine_unfiltered_signals()
         
-        # Step 2: Z-score on full universe
-        zscored = self._zscore(self._combined_raw)
+        # Step 2: Filter by quantiles
+        filtered = self._filter(self._combined_unfiltered)
         
-        # Step 3: Filter by quantiles
-        filtered = self._filter(zscored)
-        
-        # Step 4: Re-zscore on active names
+        # Step 3: Re-zscore on active names
         self._combined_signal = self._rezscore_active(filtered)
         
-        # Step 5: Apply volatility targeting (if enabled)
+        # Step 4: Apply volatility targeting (if enabled)
         self._weights = self._apply_vol_target(self._combined_signal)
         
         return self._weights
     
-    def _combine_raw_signals(self) -> pd.DataFrame:
+    def _combine_unfiltered_signals(self) -> pd.DataFrame:
         """
-        Weighted combination of raw signals.
+        Weighted combination of unfiltered signals (already z-scored).
         
         Returns:
-            Combined raw signal DataFrame
+            Combined unfiltered signal DataFrame
         """
-        names = list(self._raw_signals.keys())
+        names = list(self._unfiltered_signals.keys())
         
         # Determine weights
         if not self.predictor_weights:
@@ -128,8 +129,8 @@ class Portfolio:
         
         # Combine
         combined = None
-        for name, raw_signal in self._raw_signals.items():
-            weighted = raw_signal * weights[name]
+        for name, unfiltered_signal in self._unfiltered_signals.items():
+            weighted = unfiltered_signal * weights[name]
             if combined is None:
                 combined = weighted
             else:
@@ -236,9 +237,9 @@ class Portfolio:
         """Return the most recent portfolio weights."""
         return self._weights
     
-    def get_combined_raw(self) -> Optional[pd.DataFrame]:
-        """Return combined raw signal (before z-scoring)."""
-        return self._combined_raw
+    def get_combined_unfiltered(self) -> Optional[pd.DataFrame]:
+        """Return combined unfiltered signal (before filtering)."""
+        return self._combined_unfiltered
     
     def get_combined_signal(self) -> Optional[pd.DataFrame]:
         """Return combined processed signal."""
@@ -251,7 +252,7 @@ class Portfolio:
         Returns:
             Dict mapping predictor names to their weight contribution
         """
-        names = list(self._raw_signals.keys())
+        names = list(self._unfiltered_signals.keys())
         
         if not names:
             return {}
