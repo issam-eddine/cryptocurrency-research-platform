@@ -1,4 +1,4 @@
-# Cryptocurrency Research Platform - Mathematical Pipeline
+# Cryptocurrency Research Platform
 
 ## 1. Data Pipeline
 
