@@ -46,7 +46,7 @@ st.sidebar.header("Global Configuration")
 
 universe_size = st.sidebar.selectbox(
     "Universe (top N symbols by volume)",
-    [10, 20, 30],
+    [10, 20],
     index=0
 )
 
@@ -83,10 +83,10 @@ st.sidebar.markdown("---")
 # ===== MOMENTUM STRATEGY PARAMETERS (Hourly) =====
 st.sidebar.subheader("Momentum Strategy")
 momentum_lookback = st.sidebar.slider("Momentum Lookback (hours)", 12, 336, 168, key="mom_lookback")  # 168h = 1 week
-momentum_rebalance = st.sidebar.slider("Momentum Rebalance (hours)", 1, 168, 24, key="mom_rebal")  # 24h = daily
-momentum_top_q_inv = st.sidebar.slider("Momentum Top quantile (long)", 0.10, 0.50, 0.20, key="mom_top")
+momentum_rebalance = st.sidebar.slider("Momentum Rebalance (hours)", 1, 168, 12, key="mom_rebal")  # 24h = daily
+momentum_top_q_inv = st.sidebar.slider("Momentum Top quantile (long)", 0.10, 0.50, 0.30, key="mom_top")
 momentum_top_q = 1 - momentum_top_q_inv
-momentum_bottom_q = st.sidebar.slider("Momentum Bottom quantile (short)", 0.10, 0.50, 0.20, key="mom_bot")
+momentum_bottom_q = st.sidebar.slider("Momentum Bottom quantile (short)", 0.10, 0.50, 0.30, key="mom_bot")
 
 st.sidebar.markdown("---")
 
@@ -102,13 +102,13 @@ st.sidebar.markdown("---")
 
 # ===== EWMA CROSSOVER STRATEGY PARAMETERS (Hourly) =====
 st.sidebar.subheader("EWMA Crossover Strategy")
-ewma_fast_window = st.sidebar.slider("EWMA Fast Window (hours)", 6, 72, 24, key="ewma_fast")  # 24h = 1 day
-ewma_slow_window = st.sidebar.slider("EWMA Slow Window (hours)", 48, 336, 168, key="ewma_slow")  # 168h = 1 week
+ewma_fast_window = st.sidebar.slider("EWMA Fast Window (hours)", 6, 72, 12, key="ewma_fast")  # 24h = 1 day
+ewma_slow_window = st.sidebar.slider("EWMA Slow Window (hours)", 24, 336, 48, key="ewma_slow")  # 168h = 1 week
 ewma_std_window = st.sidebar.slider("EWMA Std Dev Window (hours)", 12, 168, 72, key="ewma_std")  # 72h = 3 days
 ewma_rebalance = st.sidebar.slider("EWMA Rebalance (hours)", 1, 168, 24, key="ewma_rebal")  # 24h = daily
-ewma_top_q_inv = st.sidebar.slider("EWMA Top quantile (long)", 0.10, 0.50, 0.20, key="ewma_top")
+ewma_top_q_inv = st.sidebar.slider("EWMA Top quantile (long)", 0.10, 0.50, 0.30, key="ewma_top")
 ewma_top_q = 1 - ewma_top_q_inv
-ewma_bottom_q = st.sidebar.slider("EWMA Bottom quantile (short)", 0.10, 0.50, 0.20, key="ewma_bot")
+ewma_bottom_q = st.sidebar.slider("EWMA Bottom quantile (short)", 0.10, 0.50, 0.30, key="ewma_bot")
 
 st.sidebar.markdown("---")
 
@@ -116,7 +116,7 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Combined Portfolio Weights")
 momentum_weight = st.sidebar.slider("Momentum Weight", 0.0, 1.0, 0.333, step=0.01, key="mom_wgt")
 mr_weight = st.sidebar.slider("Mean Reversion Weight", 0.0, 1.0, 0.333, step=0.01, key="mr_wgt")
-ewma_weight = st.sidebar.slider("EWMA Crossover Weight", 0.0, 1.0, 0.334, step=0.01, key="ewma_wgt")
+ewma_weight = st.sidebar.slider("EWMA Crossover Weight", 0.0, 1.0, 0.333, step=0.01, key="ewma_wgt")
 
 # Normalize weights
 total_weight = momentum_weight + mr_weight + ewma_weight
@@ -127,9 +127,9 @@ if total_weight > 0:
 
 # Combined portfolio quantile filtering
 st.sidebar.subheader("Combined Portfolio Filtering")
-combined_top_q_inv = st.sidebar.slider("Combined Top quantile (long)", 0.10, 0.50, 0.20, key="comb_top")
+combined_top_q_inv = st.sidebar.slider("Combined Top quantile (long)", 0.10, 0.50, 0.30, key="comb_top")
 combined_top_q = 1 - combined_top_q_inv
-combined_bottom_q = st.sidebar.slider("Combined Bottom quantile (short)", 0.10, 0.50, 0.20, key="comb_bot")
+combined_bottom_q = st.sidebar.slider("Combined Bottom quantile (short)", 0.10, 0.50, 0.30, key="comb_bot")
 
 st.sidebar.markdown("---")
 
@@ -352,7 +352,7 @@ if run:
         y=result_combined.cumulative_returns.values,
         mode='lines',
         name='Combined Portfolio',
-        line=dict(width=3, color='#DD0000', dash='dash')
+        line=dict(width=3, color='#FFFFFF')
     ))
 
     fig.update_layout(
@@ -639,7 +639,7 @@ if run:
         y=dd_combined.values,
         mode='lines',
         name='Combined',
-        line=dict(width=2, color='#DD0000', dash='dash')
+        line=dict(width=2, color='#FFFFFF')
     ))
     
     fig_dd.update_layout(
