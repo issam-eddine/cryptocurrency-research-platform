@@ -212,11 +212,6 @@ __marimo__/
 # data
 /data/
 
-# README+.md
-documentation/README.md
-
 # streamlit
 .devcontainer
 
-# latex files
-*.tex
