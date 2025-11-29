@@ -69,14 +69,24 @@ The application will start in your default browser at `http://localhost:8501`.
 
 ## Structure
 
-src/pipeline/
-├── __init__.py           # Clean exports for all classes
-├── data_pipeline.py      # DataPipeline: data extraction + preprocessing
-├── signal_strategy.py    # SignalStrategy base + 3 concrete strategies
-├── predictor.py          # Predictor: ranking + quantile filtering
-├── portfolio.py          # Portfolio: combine predictors with weights
-├── feature_engineer.py   # FeatureEngineer: compute features for 3 strategies
-├── target_engineer.py    # TargetEngineer: 1-day forward returns
-├── metrics.py            # MetricsCalculator: performance metrics
-└── backtester.py         # Backtester: full backtest orchestration
-
+```
+├── README.md
+├── documentation
+│   └── README+.md
+├── main.py
+├── pyproject.toml
+├── requirements.txt
+├── src
+│   └── pipeline
+│       ├── backtester.py
+│       ├── data_pipeline.py
+│       ├── feature_engineer.py
+│       ├── metrics.py
+│       ├── portfolio.py
+│       ├── predictor.py
+│       ├── signal_strategy.py
+│       └── target_engineer.py
+├── streamlit
+│   └── app.py
+└── uv.lock
+```
