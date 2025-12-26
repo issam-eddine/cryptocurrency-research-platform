@@ -22,9 +22,11 @@ class DataPipeline:
     - Building aligned price matrices across multiple symbols
     """
     
-    def __init__(self, cache_dir: str = "data/raw", exchange_id: str = "binanceus"):
+    def __init__(self, cache_dir: str = "data/raw", exchange_id: str = "binanceus",
+                 max_retries: int = 5):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.max_retries = max_retries
         
         self.exchange = ccxt.binanceus({
             'enableRateLimit': True,
@@ -80,20 +82,28 @@ class DataPipeline:
     
     def _fetch_from_exchange(self, symbol: str, timeframe: str = "1h",
                              limit: int = 1000) -> pd.DataFrame:
-        """Fetch OHLCV directly from the exchange."""
+        """Fetch OHLCV directly from the exchange with retry logic."""
         all_rows = []
         
         # Start from 10 years ago
         since_param = int((datetime.now().timestamp() - (10 * 365 * 24 * 60 * 60)) * 1000)
+        consecutive_failures = 0
         
         while True:
             try:
                 chunk = self.exchange.fetch_ohlcv(
                     symbol, timeframe=timeframe, since=since_param, limit=limit
                 )
+                consecutive_failures = 0  # Reset on success
             except ccxt.BaseError as e:
-                print(f"Error: {e}, retrying...")
-                time.sleep(2)
+                consecutive_failures += 1
+                if consecutive_failures >= self.max_retries:
+                    print(f"Max retries ({self.max_retries}) exceeded for {symbol}: {e}")
+                    break
+                # Exponential backoff: 2, 4, 8, 16, 32 seconds
+                wait_time = 2 ** consecutive_failures
+                print(f"Error: {e}, retrying in {wait_time}s (attempt {consecutive_failures}/{self.max_retries})...")
+                time.sleep(wait_time)
                 continue
             
             if not chunk or len(chunk) < limit:
@@ -187,6 +197,7 @@ class DataPipeline:
                 reverse=True
             )
             return [m["symbol"] for m in filtered][:n]
-        except Exception:
+        except ccxt.BaseError as e:
+            print(f"Failed to fetch markets: {e}, using default symbols")
             return ["BTC/USDT", "ETH/USDT", "XRP/USDT", "BNB/USDT",
-                    "SOL/USDT", "TRX/USDT", "DOGE/USDT", "ADA/USDT",][:n]
+                    "SOL/USDT", "TRX/USDT", "DOGE/USDT", "ADA/USDT"][:n]

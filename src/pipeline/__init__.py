@@ -25,6 +25,7 @@ from .feature_engineer import FeatureEngineer
 from .target_engineer import TargetEngineer
 from .metrics import MetricsCalculator, PerformanceMetrics
 from .backtester import Backtester, BacktestResult
+from .signal_utils import zscore_cross_sectional, filter_by_quantile, rezscore_active
 
 
 __all__ = [
@@ -50,5 +51,10 @@ __all__ = [
     "PerformanceMetrics",
     "Backtester",
     "BacktestResult",
+    
+    # Signal Utilities
+    "zscore_cross_sectional",
+    "filter_by_quantile",
+    "rezscore_active",
 ]
 

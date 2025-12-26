@@ -138,14 +138,15 @@ class Backtester:
         Returns:
             Weights with rebalancing schedule applied
         """
-        rebalanced = pd.DataFrame(0.0, index=weights.index, columns=weights.columns)
+        rebalanced = pd.DataFrame(np.nan, index=weights.index, columns=weights.columns)
         
+        # Only set weights on rebalance dates (others remain NaN)
         for i, date in enumerate(weights.index):
             if i % self.rebalance_frequency == 0:
                 rebalanced.loc[date] = weights.loc[date]
         
-        # Forward fill between rebalance dates
-        rebalanced = rebalanced.replace(0, np.nan).ffill().fillna(0)
+        # Forward fill between rebalance dates, then fill any remaining NaN with 0
+        rebalanced = rebalanced.ffill().fillna(0)
         
         return rebalanced
     
@@ -217,7 +218,8 @@ class Backtester:
         """
         rolling_sharpe = self.metrics_calculator.rolling_sharpe(returns, window)
         rolling_dd = self.metrics_calculator.rolling_drawdown(returns)
-        rolling_vol = returns.rolling(window).std() * np.sqrt(8760)
+        periods_per_year = self.metrics_calculator.periods_per_year
+        rolling_vol = returns.rolling(window).std() * np.sqrt(periods_per_year)
         
         return pd.DataFrame({
             "rolling_sharpe": rolling_sharpe,

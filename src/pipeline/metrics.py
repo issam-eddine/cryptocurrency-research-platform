@@ -20,7 +20,7 @@ class PerformanceMetrics:
     avg_win: float
     avg_loss: float
     profit_factor: float
-    total_trades: int
+    total_periods: int
     
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary."""
@@ -34,7 +34,7 @@ class PerformanceMetrics:
             "avg_win": self.avg_win,
             "avg_loss": self.avg_loss,
             "profit_factor": self.profit_factor,
-            "total_trades": self.total_trades
+            "total_periods": self.total_periods
         }
 
 
@@ -160,7 +160,7 @@ class MetricsCalculator:
                 avg_win=0.0,
                 avg_loss=0.0,
                 profit_factor=0.0,
-                total_trades=0
+                total_periods=0
             )
         
         # Compute average win/loss
@@ -179,7 +179,7 @@ class MetricsCalculator:
             avg_win=avg_win,
             avg_loss=avg_loss,
             profit_factor=self.profit_factor(returns),
-            total_trades=len(returns)
+            total_periods=len(returns)
         )
     
     def compute_dict(self, returns: pd.Series) -> Dict[str, float]:

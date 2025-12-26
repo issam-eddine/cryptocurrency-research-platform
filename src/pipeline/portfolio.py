@@ -13,8 +13,9 @@ different strategies are on a comparable scale before combining.
 """
 
 import pandas as pd
-import numpy as np
 from typing import Dict, Optional
+
+from .signal_utils import filter_by_quantile, rezscore_active
 
 
 class Portfolio:
@@ -96,11 +97,17 @@ class Portfolio:
         # Step 1: Combine unfiltered signals with weights
         self._combined_unfiltered = self._combine_unfiltered_signals()
         
-        # Step 2: Filter by quantiles
-        filtered = self._filter(self._combined_unfiltered)
+        # Step 2: Filter by quantiles (using shared utility)
+        filtered = filter_by_quantile(
+            self._combined_unfiltered,
+            top_q=self.top_q,
+            bottom_q=self.bottom_q,
+            long_short=self.long_short,
+            discrete=self.discrete
+        )
         
-        # Step 3: Re-zscore on active names
-        self._combined_signal = self._rezscore_active(filtered)
+        # Step 3: Re-zscore on active names (using shared vectorized utility)
+        self._combined_signal = rezscore_active(filtered)
         
         # Step 4: Apply volatility targeting (if enabled)
         self._weights = self._apply_vol_target(self._combined_signal)
@@ -137,76 +144,6 @@ class Portfolio:
                 combined = combined.add(weighted, fill_value=0)
         
         return combined
-    
-    def _zscore(self, signals: pd.DataFrame) -> pd.DataFrame:
-        """
-        Cross-sectional z-score.
-        
-        Args:
-            signals: Signal DataFrame
-            
-        Returns:
-            Z-scored signals DataFrame
-        """
-        cs_mean = signals.mean(axis=1, skipna=True)
-        cs_std = signals.std(axis=1, skipna=True)
-        cs_std = cs_std.replace(0, np.nan)
-        
-        zscored = signals.sub(cs_mean, axis=0).div(cs_std, axis=0)
-        return zscored.fillna(0)
-    
-    def _filter(self, zscored: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filter by top/bottom quantiles.
-        
-        Args:
-            zscored: Z-scored signals DataFrame
-            
-        Returns:
-            Filtered signals DataFrame
-        """
-        long_threshold = zscored.quantile(self.top_q, axis=1)
-        short_threshold = zscored.quantile(self.bottom_q, axis=1)
-        
-        filtered = pd.DataFrame(0.0, index=zscored.index, columns=zscored.columns)
-        
-        # Long positions
-        long_mask = zscored.ge(long_threshold, axis=0)
-        filtered = filtered.where(~long_mask, 1.0 if self.discrete else zscored)
-        
-        # Short positions
-        if self.long_short:
-            short_mask = zscored.le(short_threshold, axis=0)
-            filtered = filtered.where(~short_mask, -1.0 if self.discrete else zscored)
-        
-        return filtered
-    
-    def _rezscore_active(self, filtered: pd.DataFrame) -> pd.DataFrame:
-        """
-        Re-zscore on active (non-zero) names.
-        
-        Args:
-            filtered: Filtered signals DataFrame
-            
-        Returns:
-            Re-z-scored signals DataFrame
-        """
-        re_zscored = filtered.copy()
-        
-        for date in filtered.index:
-            row = filtered.loc[date]
-            active_mask = row != 0
-            
-            if active_mask.sum() > 1:
-                active_values = row[active_mask]
-                mean_active = active_values.mean()
-                std_active = active_values.std()
-                
-                if std_active > 0:
-                    re_zscored.loc[date, active_mask] = \
-                        (active_values - mean_active) / std_active
-        
-        return re_zscored
     
     def _apply_vol_target(self, signals: pd.DataFrame) -> pd.DataFrame:
         """

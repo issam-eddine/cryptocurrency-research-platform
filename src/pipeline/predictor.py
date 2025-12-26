@@ -9,10 +9,10 @@ Workflow:
 """
 
 import pandas as pd
-import numpy as np
 from typing import Optional
 
 from .signal_strategy import SignalStrategy
+from .signal_utils import zscore_cross_sectional, filter_by_quantile, rezscore_active
 
 
 class Predictor:
@@ -87,7 +87,7 @@ class Predictor:
         raw_signal = self.compute_raw_signal(price_matrix)
         
         # Apply cross-sectional z-score
-        self._unfiltered_signal = self._zscore(raw_signal)
+        self._unfiltered_signal = zscore_cross_sectional(raw_signal)
         return self._unfiltered_signal
     
     def get_unfiltered_signal(self) -> Optional[pd.DataFrame]:
@@ -116,85 +116,21 @@ class Predictor:
             raise ValueError("No raw signal. Call compute_raw_signal first.")
         
         # Step 1: Z-score on full universe
-        zscored = self._zscore(raw_signal)
+        zscored = zscore_cross_sectional(raw_signal)
         
         # Step 2: Filter by quantiles
-        filtered = self._filter(zscored)
+        filtered = filter_by_quantile(
+            zscored, 
+            top_q=self.top_q, 
+            bottom_q=self.bottom_q,
+            long_short=self.long_short, 
+            discrete=self.discrete
+        )
         
-        # Step 3: Re-zscore on active names only
-        re_zscored = self._rezscore_active(filtered)
+        # Step 3: Re-zscore on active names only (vectorized)
+        re_zscored = rezscore_active(filtered)
         
         self._processed_signal = re_zscored
-        return re_zscored
-    
-    def _zscore(self, signals: pd.DataFrame) -> pd.DataFrame:
-        """
-        Cross-sectional z-score (full universe).
-        
-        Args:
-            signals: Signal DataFrame
-            
-        Returns:
-            Z-scored signals DataFrame
-        """
-        cs_mean = signals.mean(axis=1, skipna=True)
-        cs_std = signals.std(axis=1, skipna=True)
-        cs_std = cs_std.replace(0, np.nan)  # Avoid division by zero
-        
-        zscored = signals.sub(cs_mean, axis=0).div(cs_std, axis=0)
-        return zscored.fillna(0)
-    
-    def _filter(self, zscored: pd.DataFrame) -> pd.DataFrame:
-        """
-        Filter by top/bottom quantiles.
-        
-        Args:
-            zscored: Z-scored signals DataFrame
-            
-        Returns:
-            Filtered signals DataFrame
-        """
-        long_threshold = zscored.quantile(self.top_q, axis=1)
-        short_threshold = zscored.quantile(self.bottom_q, axis=1)
-        
-        filtered = pd.DataFrame(0.0, index=zscored.index, columns=zscored.columns)
-        
-        # Long: above top quantile
-        long_mask = zscored.ge(long_threshold, axis=0)
-        filtered = filtered.where(~long_mask, 1.0 if self.discrete else zscored)
-        
-        # Short: below bottom quantile (if enabled)
-        if self.long_short:
-            short_mask = zscored.le(short_threshold, axis=0)
-            filtered = filtered.where(~short_mask, -1.0 if self.discrete else zscored)
-        
-        return filtered
-    
-    def _rezscore_active(self, filtered: pd.DataFrame) -> pd.DataFrame:
-        """
-        Re-zscore on active (non-zero) names only.
-        
-        Args:
-            filtered: Filtered signals DataFrame
-            
-        Returns:
-            Re-z-scored signals DataFrame
-        """
-        re_zscored = filtered.copy()
-        
-        for date in filtered.index:
-            row = filtered.loc[date]
-            active_mask = row != 0
-            
-            if active_mask.sum() > 1:  # Need at least 2 for std
-                active_values = row[active_mask]
-                mean_active = active_values.mean()
-                std_active = active_values.std()
-                
-                if std_active > 0:
-                    re_zscored.loc[date, active_mask] = \
-                        (active_values - mean_active) / std_active
-        
         return re_zscored
     
     def predict(self, price_matrix: pd.DataFrame) -> pd.DataFrame:

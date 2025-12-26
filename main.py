@@ -5,12 +5,11 @@ Example usage of the pipeline architecture:
 1. DataPipeline: Fetch and preprocess data
 2. Predictor (x3): Compute UNFILTERED signals for each strategy (raw → z-score)
 3. Portfolio: Combine unfiltered signals → filter → re-zscore → weights
-4. TargetEngineer: Compute 1-day returns
-5. Backtester: Run backtest
-6. MetricsCalculator: Compute performance metrics
+4. Backtester: Run backtest
+5. MetricsCalculator: Compute performance metrics
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from src.pipeline import (
     DataPipeline,
     MomentumStrategy,
@@ -18,9 +17,6 @@ from src.pipeline import (
     EWMACrossoverStrategy,
     Predictor,
     Portfolio,
-    FeatureEngineer,
-    TargetEngineer,
-    MetricsCalculator,
     Backtester
 )
 
@@ -51,6 +47,11 @@ def main():
         start_date=start_date,
         end_date=end_date
     )
+    
+    # Validate data was fetched successfully
+    if not raw_data or all(df.empty for df in raw_data.values()):
+        raise RuntimeError("Failed to fetch data for any symbol. Check network connection and symbol validity.")
+    
     print(f"Fetched data for {len(raw_data)} symbols")
     
     # Preprocess
@@ -59,45 +60,18 @@ def main():
     
     # Get price matrix
     price_matrix = data_pipeline.get_price_matrix()
+    
+    if price_matrix.empty:
+        raise RuntimeError("Price matrix is empty after preprocessing. Check data quality.")
+    
     print(f"Price matrix shape: {price_matrix.shape}")
     print(f"Date range: {price_matrix.index[0]} to {price_matrix.index[-1]}")
     
     # ==========================================================================
-    # 2. FEATURE ENGINEERING (3 strategies) - Hourly parameters
+    # 2. CREATE PREDICTORS (1 predictor = 1 signal strategy)
     # ==========================================================================
     print("\n" + "=" * 60)
-    print("Step 2: Feature Engineering")
-    print("=" * 60)
-    
-    # Hourly lookbacks: 24h = 1 day, 168h = 1 week, etc.
-    feature_engineer = FeatureEngineer(
-        momentum_lookback=168,       # 1 week (168 hours)
-        mean_reversion_lookback=72,  # 3 days (72 hours)
-        ewma_fast=24,                # 1 day
-        ewma_slow=168,               # 1 week
-        ewma_std=72                  # 3 days
-    )
-    
-    features = feature_engineer.compute_features(price_matrix)
-    for name, df in features.items():
-        print(f"  - {name}: {df.shape}")
-    
-    # ==========================================================================
-    # 3. TARGET ENGINEERING (1-day returns)
-    # ==========================================================================
-    print("\n" + "=" * 60)
-    print("Step 3: Target Engineering")
-    print("=" * 60)
-    
-    target_engineer = TargetEngineer(forward_period=1)
-    targets = target_engineer.compute_targets(price_matrix)
-    print(f"Targets shape: {targets.shape}")
-    
-    # ==========================================================================
-    # 4. CREATE PREDICTORS (1 predictor = 1 signal strategy)
-    # ==========================================================================
-    print("\n" + "=" * 60)
-    print("Step 4: Create Predictors")
+    print("Step 2: Create Predictors")
     print("=" * 60)
     
     # Create 3 predictors, one for each strategy (hourly lookbacks)
@@ -135,10 +109,10 @@ def main():
     print(f"  - EWMA UNFILTERED signals: {ewma_unfiltered.shape}")
     
     # ==========================================================================
-    # 5. PORTFOLIO CONSTRUCTION (combine UNFILTERED signals → process)
+    # 3. PORTFOLIO CONSTRUCTION (combine UNFILTERED signals → process)
     # ==========================================================================
     print("\n" + "=" * 60)
-    print("Step 5: Portfolio Construction")
+    print("Step 3: Portfolio Construction")
     print("=" * 60)
     
     # Create portfolio with custom weights and filtering parameters
@@ -168,10 +142,10 @@ def main():
     print(f"Predictor contributions: {portfolio.get_predictor_contribution()}")
     
     # ==========================================================================
-    # 6. BACKTESTING
+    # 4. BACKTESTING
     # ==========================================================================
     print("\n" + "=" * 60)
-    print("Step 6: Backtesting")
+    print("Step 4: Backtesting")
     print("=" * 60)
     
     backtester = Backtester(
@@ -187,10 +161,10 @@ def main():
     print(f"Average turnover: {result.turnover.mean():.4f}")
     
     # ==========================================================================
-    # 7. METRICS
+    # 5. METRICS
     # ==========================================================================
     print("\n" + "=" * 60)
-    print("Step 7: Performance Metrics")
+    print("Step 5: Performance Metrics")
     print("=" * 60)
     
     metrics = result.metrics
